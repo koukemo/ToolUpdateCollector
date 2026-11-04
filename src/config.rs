@@ -103,7 +103,7 @@ pub fn config_path() -> Result<PathBuf> {
 impl Config {
     pub fn load(path: &Path) -> Result<Self> {
         if !path.exists() {
-            return Ok(Self::initial());
+            return Ok(Self::default());
         }
         let s = std::fs::read_to_string(path)
             .with_context(|| format!("{} を読み込めません", path.display()))?;
@@ -120,26 +120,4 @@ impl Config {
         privilege::chown_to_sudo_user(path);
         Ok(())
     }
-
-    /// 初回起動時: 環境に存在するツールだけ初期登録しておく
-    fn initial() -> Self {
-        let mut commands = Vec::new();
-        if cfg!(target_os = "linux") && which("apt").is_some() {
-            commands.push(Entry::new("apt", "sudo apt update && sudo apt upgrade -y"));
-        }
-        if which("brew").is_some() {
-            commands.push(Entry::new("brew", "brew update && brew upgrade"));
-        }
-        if which("claude").is_some() {
-            commands.push(Entry::new("claude", "claude update"));
-        }
-        Config { commands }
-    }
-}
-
-pub fn which(bin: &str) -> Option<PathBuf> {
-    let path = std::env::var_os("PATH")?;
-    std::env::split_paths(&path)
-        .map(|d| d.join(bin))
-        .find(|p| p.is_file())
 }
