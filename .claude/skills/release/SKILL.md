@@ -33,9 +33,14 @@ gh repo view --json nameWithOwner,visibility,defaultBranchRef
 ```bash
 cargo fmt --check
 cargo clippy --release -- -D warnings
+cargo about generate about.hbs -o THIRD_PARTY_LICENSES.txt   # 依存ライセンス一覧を再生成
 cargo build --release
 cargo deb
 ```
+
+- `cargo about` がない → `cargo install cargo-about --locked --features cli`。
+- `cargo about` が「許可されていないライセンス」で失敗する → そのクレートとライセンスを報告して止まる。`about.toml` の `accepted` へ勝手に追加しない（特に GPL / AGPL / LGPL 系）。
+- `THIRD_PARTY_LICENSES.txt` に差分が出たら、コミットに含める。
 
 - 失敗したら直してから進める。直した内容もコミットに含める。
 - 実際の更新コマンド（`tuc run` や、TUIでの実行）は**動かさない**。ユーザーの環境のパッケージが実際に更新されてしまう。動作確認には `TUC_CONFIG=<scratchpad>/x.toml` を指定し、`echo` などの無害なコマンドだけを使う。
