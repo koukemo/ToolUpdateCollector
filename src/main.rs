@@ -6,7 +6,7 @@ mod update;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-use config::{Config, Entry, Runner};
+use config::{Config, Entry};
 
 #[derive(Parser)]
 #[command(
@@ -40,7 +40,8 @@ enum Cmd {
         /// root権限が必要 (未指定時は sudo を含むかで自動判定)
         #[arg(short, long)]
         root: bool,
-        /// WSLで実行 (Windows版のみ)
+        /// WSLで実行
+        #[cfg(windows)]
         #[arg(short, long)]
         wsl: bool,
     },
@@ -91,14 +92,16 @@ fn real_main() -> Result<()> {
             interactive,
             last,
             root,
+            #[cfg(windows)]
             wsl,
         }) => {
             let mut e = Entry::new(name, command);
             e.interactive = interactive;
             e.run_last = last;
             e.requires_root |= root;
+            #[cfg(windows)]
             if wsl {
-                e.runner = Runner::Wsl;
+                e.runner = config::Runner::Wsl;
             }
             println!("登録しました: {}", e.name);
             cfg.commands.push(e);

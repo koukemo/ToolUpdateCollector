@@ -68,7 +68,8 @@ impl Input {
     }
 }
 
-const FIELDS: usize = 6;
+/// WSLで実行 はWindows版にのみ存在する
+const FIELDS: usize = if cfg!(windows) { 6 } else { 5 };
 
 struct Form {
     index: Option<usize>,
@@ -339,7 +340,7 @@ impl App<'_> {
         e.interactive = form.interactive;
         e.run_last = form.run_last;
         e.requires_root = form.requires_root;
-        e.runner = if form.wsl {
+        e.runner = if cfg!(windows) && form.wsl {
             Runner::Wsl
         } else {
             Runner::Native
@@ -578,10 +579,12 @@ fn draw_form(f: &mut Frame, form: &Form) {
         ),
         rows[5],
     );
-    f.render_widget(
-        check(5, "WSLで実行", form.wsl, "Windows版のみ有効"),
-        rows[6],
-    );
+    if cfg!(windows) {
+        f.render_widget(
+            check(5, "WSLで実行", form.wsl, "WSL上の bash で実行"),
+            rows[6],
+        );
+    }
 
     if let Some(err) = &form.error {
         f.render_widget(Line::from(err.clone()).fg(Color::Red), rows[8]);
