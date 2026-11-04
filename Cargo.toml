@@ -1,11 +1,12 @@
 [package]
 name = "tuc"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 description = "Tool Update Collector - 登録したコマンドをまとめて実行するTUIツール"
 license = "MIT"
 repository = "https://github.com/koukemo/ToolUpdateCollector"
 readme = "README.md"
+exclude = ["about.toml", "about.hbs"]
 
 [dependencies]
 anyhow = "1"
@@ -36,4 +37,6 @@ extended-description = "tuc は apt / brew / claude などの更新コマンド�
 assets = [
     ["target/release/tuc", "usr/bin/", "755"],
     ["README.md", "usr/share/doc/tuc/README.md", "644"],
+    ["LICENSE", "usr/share/doc/tuc/LICENSE", "644"],
+    ["THIRD_PARTY_LICENSES.txt", "usr/share/doc/tuc/THIRD_PARTY_LICENSES.txt", "644"],
 ]
