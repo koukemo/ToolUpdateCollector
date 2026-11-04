@@ -49,3 +49,14 @@ tuc config-path  # 設定ファイルの場所
 ## リリース
 
 `v*` タグをpushすると、GitHub Actionsが `.deb` をビルドしてReleaseに添付する。
+
+## ライセンス
+
+[MIT License](LICENSE)
+
+依存しているクレートのライセンスは [THIRD_PARTY_LICENSES.txt](THIRD_PARTY_LICENSES.txt) にまとめ、`.deb` にも同梱している（`/usr/share/doc/tuc/`）。依存を変えたら、次のコマンドで作り直す:
+
+```sh
+cargo install cargo-about --locked --features cli
+cargo about generate about.hbs -o THIRD_PARTY_LICENSES.txt
+```
