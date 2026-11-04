@@ -52,6 +52,7 @@ cargo deb
   - 初回のリリース（まだタグがないとき）で、引数を省略した場合は、`Cargo.toml` の版をそのまま使う。
 - `vX.Y.Z` のタグがすでにある（`git tag -l` / `git ls-remote --tags origin`）→ 止まって確認する。
 - `Cargo.toml` の version を書き換えてから `cargo update -p tuc --offline`（失敗したら `cargo build`）を実行し、`Cargo.lock` も合わせる。
+- 版を上げたら `cargo about generate about.hbs -o THIRD_PARTY_LICENSES.txt` をもう一度実行する（一覧に tuc 自身の版も載るため）。
 
 ## 3. ブランチ・コミット・PR
 
