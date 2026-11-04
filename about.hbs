@@ -1,0 +1,15 @@
+tuc で使用しているサードパーティ製ソフトウェアのライセンス
+Third-party software licenses used by tuc
+==========================================================
+
+{{#each licenses}}
+------------------------------------------------------------
+{{name}} ({{id}})
+Used by:
+{{#each used_by}}
+  - {{crate.name}} {{crate.version}}{{#if crate.repository}} ({{crate.repository}}){{/if}}
+{{/each}}
+
+{{{text}}}
+
+{{/each}}
