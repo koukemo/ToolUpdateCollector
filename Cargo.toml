@@ -1,0 +1,39 @@
+[package]
+name = "tuc"
+version = "0.1.0"
+edition = "2021"
+description = "Tool Update Collector - 登録したコマンドをまとめて実行するTUIツール"
+license = "MIT"
+repository = "https://github.com/koukemo/ToolUpdateCollector"
+readme = "README.md"
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+crossterm = "0.28"
+dirs = "5"
+ratatui = "0.29"
+semver = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+unicode-width = "0.2"
+ureq = { version = "2", features = ["json"] }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[profile.release]
+strip = true
+lto = true
+
+[package.metadata.deb]
+maintainer = "koukemo"
+section = "utils"
+priority = "optional"
+depends = "$auto"
+extended-description = "tuc は apt / brew / claude などの更新コマンドを登録し、TUI からまとめて実行するツールです。"
+assets = [
+    ["target/release/tuc", "usr/bin/", "755"],
+    ["README.md", "usr/share/doc/tuc/README.md", "644"],
+]
