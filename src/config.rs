@@ -10,7 +10,8 @@ pub enum Runner {
     /// OS標準のシェルで実行
     #[default]
     Native,
-    /// Windows版のみ: WSL上で実行
+    /// Windows版のみ: WSL上で実行 (他OSでは Native として扱う)
+    #[cfg_attr(not(windows), allow(dead_code))]
     Wsl,
 }
 
@@ -70,7 +71,7 @@ impl Entry {
         if self.requires_root {
             t.push("root");
         }
-        if self.runner == Runner::Wsl {
+        if cfg!(windows) && self.runner == Runner::Wsl {
             t.push("WSL");
         }
         t

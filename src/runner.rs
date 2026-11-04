@@ -1,7 +1,9 @@
 use anyhow::Result;
 use std::process::{Command, Stdio};
 
-use crate::config::{Entry, Runner};
+use crate::config::Entry;
+#[cfg(windows)]
+use crate::config::Runner;
 use crate::privilege;
 
 pub struct Outcome {
@@ -108,7 +110,6 @@ fn build_command(e: &Entry, _root: bool) -> Command {
 
 #[cfg(not(windows))]
 fn build_command(e: &Entry, root: bool) -> Command {
-    let _ = Runner::Wsl; // WSL指定はWindows版のみ有効
     if root && !e.requires_root {
         // sudo tuc 時、root不要のコマンド (brew 等) は元ユーザーのログイン環境で実行
         if let Some(user) = privilege::sudo_user() {
