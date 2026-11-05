@@ -198,7 +198,110 @@ pub fn cleanup_old_exe() {
     }
 }
 
-#[cfg(not(any(target_os = "linux", windows)))]
+#[cfg(target_os = "macos")]
+fn install(release: &Release) -> Result<()> {
+    use std::process::Command;
+    let suffix = format!("_macos_{}.tar.gz", std::env::consts::ARCH);
+    let asset = release
+        .assets
+        .iter()
+        .find(|a| a.name.ends_with(&suffix))
+        .with_context(|| format!("macOS 向けの {suffix} がありません: {}", release.html_url))?;
+    let output = Command::new("/usr/bin/mktemp")
+        .args(["-d", "-t", "tuc-update"])
+        .output()?;
+    if !output.status.success() {
+        bail!("更新用の一時ディレクトリを作成できません");
+    }
+    let dir = std::path::PathBuf::from(String::from_utf8(output.stdout)?.trim());
+    let result = (|| -> Result<()> {
+        let archive = dir.join("update.tar.gz");
+        println!("ダウンロード中: {}", asset.name);
+        let resp = ureq::get(&asset.browser_download_url)
+            .set("User-Agent", concat!("tuc/", env!("CARGO_PKG_VERSION")))
+            .call()?;
+        let mut file = std::fs::File::create(&archive)?;
+        std::io::copy(&mut resp.into_reader(), &mut file)?;
+        drop(file);
+        let status = Command::new("/usr/bin/tar")
+            .arg("-xzf")
+            .arg(&archive)
+            .arg("-C")
+            .arg(&dir)
+            .status()?;
+        if !status.success() {
+            bail!("{} を展開できません", asset.name);
+        }
+        replace_macos_exe(&dir.join("tuc"), &std::env::current_exe()?)?;
+        println!("更新しました: {}", release.tag_name);
+        Ok(())
+    })();
+    let _ = std::fs::remove_dir_all(&dir);
+    result
+}
+
+// 同じディレクトリに書き終えてから rename し、実行中のバイナリを原子的に置き換える。
+#[cfg(target_os = "macos")]
+fn replace_macos_exe(new_exe: &std::path::Path, current: &std::path::Path) -> Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    let mut source = std::fs::File::open(new_exe).context("更新ファイルに tuc がありません")?;
+    let staged = current.with_file_name(format!(".tuc-update-{}", std::process::id()));
+    let mut dest = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&staged)
+        .context(
+            "インストール先に書き込めません。書き込み権限と .tuc-update-* の残存を確認してください",
+        )?;
+    let result = (|| -> Result<()> {
+        std::io::copy(&mut source, &mut dest)?;
+        dest.set_permissions(std::fs::Permissions::from_mode(0o755))?;
+        dest.sync_all()?;
+        drop(dest);
+        std::fs::rename(&staged, current)?;
+        Ok(())
+    })();
+    let _ = std::fs::remove_file(&staged);
+    result
+}
+
+#[cfg(all(test, target_os = "macos"))]
+mod tests {
+    use super::*;
+    use std::os::unix::fs::PermissionsExt;
+
+    #[test]
+    fn macos_replacement_preserves_current_on_failure_and_sets_executable_mode() {
+        let output = std::process::Command::new("/usr/bin/mktemp")
+            .args(["-d", "-t", "tuc-update-test"])
+            .output()
+            .unwrap();
+        assert!(output.status.success());
+        let dir = std::path::PathBuf::from(String::from_utf8(output.stdout).unwrap().trim());
+        let current = dir.join("tuc");
+        let new = dir.join("new-tuc");
+        std::fs::write(&current, "old").unwrap();
+        assert!(replace_macos_exe(&new, &current).is_err());
+        assert_eq!(std::fs::read(&current).unwrap(), b"old");
+        std::fs::write(&new, "new").unwrap();
+        let staged = dir.join(format!(".tuc-update-{}", std::process::id()));
+        std::fs::write(&staged, "unrelated").unwrap();
+        assert!(replace_macos_exe(&new, &current).is_err());
+        assert_eq!(std::fs::read(&current).unwrap(), b"old");
+        assert_eq!(std::fs::read(&staged).unwrap(), b"unrelated");
+        std::fs::remove_file(&staged).unwrap();
+        replace_macos_exe(&new, &current).unwrap();
+        assert_eq!(std::fs::read(&current).unwrap(), b"new");
+        assert_eq!(
+            std::fs::metadata(&current).unwrap().permissions().mode() & 0o777,
+            0o755
+        );
+        assert!(!staged.exists());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "macos", windows)))]
 fn install(release: &Release) -> Result<()> {
     println!("このOS向けの自動更新は未対応です。以下からダウンロードしてください:");
     println!("  {}", release.html_url);

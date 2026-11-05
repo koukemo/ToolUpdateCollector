@@ -12,6 +12,22 @@
 sudo apt install ./tuc_<version>-1_amd64.deb
 ```
 
+### macOS（Apple Silicon / Intel）
+
+Apple Silicon は `tuc_<version>_macos_aarch64.tar.gz`、Intel は `tuc_<version>_macos_x86_64.tar.gz` を取得する。
+
+```sh
+tar -xzf tuc_<version>_macos_aarch64.tar.gz
+mkdir -p "$HOME/.local/bin"
+install -m 755 tuc "$HOME/.local/bin/tuc"
+export PATH="$HOME/.local/bin:$PATH"
+tuc --version
+```
+
+Intel の場合は展開するファイル名を置き換える。PATH の設定は `~/.zshrc` などにも追加する。
+Mac版は Developer ID 署名・公証を行っていない。macOS が起動をブロックした場合は、取得元を確認して「システム設定 → プライバシーとセキュリティ」から許可する。
+`tuc update` で実行ファイルを更新できる。書き込み権限のあるフォルダにインストールする。
+
 ### Windows
 
 `tuc_<version>_windows_x86_64.zip` を展開し、`tuc.exe` を PATH の通ったフォルダ（例: `%USERPROFILE%\.local\bin`）に置く。
@@ -70,13 +86,13 @@ Windows 版では「root権限が必要」が **管理者権限が必要** に�
 
 ## リリース
 
-`v*` タグをpushすると、GitHub Actionsが `.deb`（Linux）と `tuc_<version>_windows_x86_64.zip`（Windows）をビルドしてReleaseに添付する。
+`v*` タグをpushすると、GitHub Actionsが `.deb`（Linux）、`tuc_<version>_windows_x86_64.zip`（Windows）、`tuc_<version>_macos_<arch>.tar.gz`（macOS: `aarch64` / `x86_64`）をビルドしてReleaseに添付する。
 
 ## ライセンス
 
 [MIT License](LICENSE)
 
-依存しているクレートのライセンスは [THIRD_PARTY_LICENSES.txt](THIRD_PARTY_LICENSES.txt) にまとめ、`.deb`（`/usr/share/doc/tuc/`）と Windows 版の zip にも同梱している。依存を変えたら、次のコマンドで作り直す:
+依存しているクレートのライセンスは [THIRD_PARTY_LICENSES.txt](THIRD_PARTY_LICENSES.txt) にまとめ、`.deb`（`/usr/share/doc/tuc/`）、Windows 版の zip、macOS 版の tar.gz にも同梱している。依存を変えたら、次のコマンドで作り直す:
 
 ```sh
 cargo install cargo-about --locked --features cli

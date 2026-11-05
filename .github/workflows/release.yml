@@ -42,8 +42,43 @@ jobs:
           name: windows
           path: dist/*.zip
 
+  macos:
+    strategy:
+      matrix:
+        include:
+          - runner: macos-15
+            target: aarch64-apple-darwin
+            arch: aarch64
+          - runner: macos-15-intel
+            target: x86_64-apple-darwin
+            arch: x86_64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - name: Test
+        run: cargo test --locked --target ${{ matrix.target }}
+      - name: Build tuc
+        run: cargo build --release --locked --target ${{ matrix.target }}
+      - name: Package tar.gz
+        env:
+          TAG: ${{ github.ref_name }}
+          ARCH: ${{ matrix.arch }}
+          TARGET: ${{ matrix.target }}
+        run: |
+          mkdir -p dist/pkg
+          cp "target/$TARGET/release/tuc" README.md LICENSE THIRD_PARTY_LICENSES.txt dist/pkg/
+          dist/pkg/tuc --version
+          tar -czf "dist/tuc_${TAG#v}_macos_${ARCH}.tar.gz" -C dist/pkg .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-${{ matrix.arch }}
+          path: dist/*.tar.gz
+
   release:
-    needs: [deb, windows]
+    needs: [deb, windows, macos]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4

@@ -5,6 +5,14 @@ description: tuc（このリポジトリ）の変更をコミットしてPRを�
 
 # /release（tuc 用）
 
+## macOS 版（v0.2.1 以降）
+
+- workflow は Apple Silicon（`macos-15` / `aarch64-apple-darwin`）と Intel（`macos-15-intel` / `x86_64-apple-darwin`）もテスト・ビルドする。
+- `tuc_<ver>_macos_aarch64.tar.gz` と `tuc_<ver>_macos_x86_64.tar.gz` を Release に添付する。`tuc update` がこの名前を探すので形式を維持する。
+- tar.gz には `tuc`、README、LICENSE、THIRD_PARTY_LICENSES.txt を含める。Developer ID 署名・公証は未対応。
+- macOS ローカルでは `cargo fmt --check` / `cargo clippy --release --all-targets -- -D warnings` / `cargo test` / `cargo build --release` / ライセンス再生成を行う。`cargo deb` は Linux でのみ実行する。
+- PR 本文・最終確認では既存の Linux / Windows 成果物に加え、Mac 向け2点も確認する。
+
 commit → PR → rebase merge → タグ → GitHub Actions で `.deb` と Windows 版 zip をビルド → Release に添付、までを行う。
 /release の実行そのものが、コミット・push・PR作成・マージ・タグ作成の許可になる。ただし「止まる」と書いた条件に当たったら、ユーザーに確認してから進める。
 
