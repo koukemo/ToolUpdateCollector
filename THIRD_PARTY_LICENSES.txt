@@ -2606,7 +2606,7 @@ SOFTWARE.
 ------------------------------------------------------------
 MIT License (MIT)
 Used by:
-  - tuc 0.1.2 (https://github.com/koukemo/ToolUpdateCollector)
+  - tuc 0.2.0 (https://github.com/koukemo/ToolUpdateCollector)
 
 MIT License
 
