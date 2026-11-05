@@ -101,7 +101,104 @@ fn install(release: &Release) -> Result<()> {
     Ok(())
 }
 
-#[cfg(not(target_os = "linux"))]
+/// Windows版のリリース成果物名: tuc_<ver>_windows_<arch>.zip
+#[cfg(windows)]
+fn install(release: &Release) -> Result<()> {
+    use std::process::Command;
+    let suffix = format!("_windows_{}.zip", std::env::consts::ARCH);
+    let asset = release
+        .assets
+        .iter()
+        .find(|a| a.name.ends_with(&suffix))
+        .with_context(|| {
+            format!(
+                "Windows ({}) 向けの zip がリリースにありません: {}",
+                std::env::consts::ARCH,
+                release.html_url
+            )
+        })?;
+
+    let dir = std::env::temp_dir().join(format!("tuc-update-{}", release.tag_name));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir)?;
+    let zip = dir.join(&asset.name);
+    println!("ダウンロード中: {}", asset.name);
+    let resp = ureq::get(&asset.browser_download_url)
+        .set("User-Agent", concat!("tuc/", env!("CARGO_PKG_VERSION")))
+        .call()?;
+    let mut file = std::fs::File::create(&zip)?;
+    std::io::copy(&mut resp.into_reader(), &mut file)?;
+    drop(file);
+
+    // Windows 10 以降に標準で入っている tar.exe (bsdtar) で zip を展開する
+    let extracted = dir.join("extracted");
+    std::fs::create_dir_all(&extracted)?;
+    // PATH 上の GNU tar (Git for Windows 等) は zip を扱えないので、System32 のものを使う
+    let system_root = std::env::var_os("SystemRoot").unwrap_or_else(|| "C:\\Windows".into());
+    let tar = std::path::Path::new(&system_root)
+        .join("System32")
+        .join("tar.exe");
+    let status = Command::new(tar)
+        .arg("-xf")
+        .arg(&zip)
+        .arg("-C")
+        .arg(&extracted)
+        .status()
+        .context("tar.exe を起動できません")?;
+    if !status.success() {
+        bail!("{} を展開できません", asset.name);
+    }
+    let new_exe = extracted.join("tuc.exe");
+    if !new_exe.is_file() {
+        bail!("{} に tuc.exe がありません", asset.name);
+    }
+
+    println!("インストール中...");
+    let result = replace_exe(&new_exe);
+    let _ = std::fs::remove_dir_all(&dir);
+    result?;
+    println!("更新しました: {}", release.tag_name);
+    Ok(())
+}
+
+/// 実行中の exe はリネームはできるが上書きはできないので、
+/// tuc.exe → tuc.exe.old に退避してから新しい exe を置く
+#[cfg(windows)]
+fn replace_exe(new_exe: &std::path::Path) -> Result<()> {
+    let current = std::env::current_exe()?;
+    let old = old_exe_path(&current);
+    let _ = std::fs::remove_file(&old);
+    std::fs::rename(&current, &old).map_err(|e| {
+        let hint = if e.kind() == std::io::ErrorKind::PermissionDenied {
+            "\n管理者として実行したターミナルで tuc update を実行してください"
+        } else {
+            ""
+        };
+        anyhow::anyhow!("{} を置き換えられません: {e}{hint}", current.display())
+    })?;
+    if let Err(e) = std::fs::copy(new_exe, &current) {
+        let _ = std::fs::rename(&old, &current);
+        bail!("新しい tuc.exe を配置できません: {e}");
+    }
+    Ok(())
+}
+
+#[cfg(windows)]
+fn old_exe_path(current: &std::path::Path) -> std::path::PathBuf {
+    let mut s = current.as_os_str().to_owned();
+    s.push(".old");
+    s.into()
+}
+
+/// 前回の tuc update で退避した古い exe を消す (失敗しても無視)
+#[cfg(windows)]
+pub fn cleanup_old_exe() {
+    if let Ok(current) = std::env::current_exe() {
+        let _ = std::fs::remove_file(old_exe_path(&current));
+    }
+}
+
+#[cfg(not(any(target_os = "linux", windows)))]
 fn install(release: &Release) -> Result<()> {
     println!("このOS向けの自動更新は未対応です。以下からダウンロードしてください:");
     println!("  {}", release.html_url);

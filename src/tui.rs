@@ -382,7 +382,7 @@ impl App<'_> {
         ];
         if privilege::is_root() {
             t.push(Span::styled(
-                "  [root: 対話なしで実行]",
+                format!("  [{}: 対話なしで実行]", privilege::ROOT_LABEL),
                 Style::new().fg(Color::Yellow).bold(),
             ));
         }
@@ -573,9 +573,17 @@ fn draw_form(f: &mut Frame, form: &Form) {
     f.render_widget(
         check(
             4,
-            "root権限が必要",
+            if cfg!(windows) {
+                "管理者権限が必要"
+            } else {
+                "root権限が必要"
+            },
             form.requires_root,
-            "sudo を使うコマンド",
+            if cfg!(windows) {
+                "未昇格なら UAC で昇格して実行"
+            } else {
+                "sudo を使うコマンド"
+            },
         ),
         rows[5],
     );

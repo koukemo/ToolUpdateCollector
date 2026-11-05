@@ -19,6 +19,15 @@ pub fn plan(entries: &[Entry]) -> Vec<Entry> {
     normal.into_iter().chain(last).collect()
 }
 
+/// Windows: 管理者権限が必要なコマンドがあるのに、昇格せずに起動しているか
+#[cfg(windows)]
+pub fn needs_elevation(entries: &[Entry]) -> bool {
+    !privilege::is_root()
+        && plan(entries)
+            .iter()
+            .any(|e| e.requires_root && e.runner == Runner::Native)
+}
+
 pub fn run_all(entries: &[Entry]) -> Result<Vec<Outcome>> {
     let plan = plan(entries);
     if plan.is_empty() {
@@ -28,7 +37,10 @@ pub fn run_all(entries: &[Entry]) -> Result<Vec<Outcome>> {
 
     let root = privilege::is_root();
     if root {
-        println!("\x1b[1;33m* root権限で実行中: 対話なしで全コマンドを実行します\x1b[0m");
+        println!(
+            "\x1b[1;33m* {}権限で実行中: 対話なしで全コマンドを実行します\x1b[0m",
+            privilege::ROOT_LABEL
+        );
     } else if cfg!(unix) && plan.iter().any(|e| e.requires_root) {
         // 先にsudoの認証を済ませ、途中でパスワード待ちにならないようにする
         println!("\x1b[1;33m* root権限が必要なコマンドがあります。sudo認証を行います\x1b[0m");
