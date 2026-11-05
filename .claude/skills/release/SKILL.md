@@ -17,11 +17,11 @@ commit → PR → rebase merge → タグ → GitHub Actions で `.deb` と Wind
 
 GitHub の操作は WSL の `gh`（github.com の `koukemo` アカウント）で行う。Windows 側の `gh` は別ホスト（社内 GHE）のアカウントなので使わない。
 
-- Windows 上で作業しているときは、**`git` / `gh` / `cargo deb` / `cargo about` をすべて WSL 経由で実行する**:
-  ```bash
-  wsl.exe -- bash -lic 'cd "$(wslpath "<リポジトリのWindowsパス>")" && <コマンド>'
+- Windows 上で作業しているときは、**`git` / `gh` / `cargo deb` / `cargo about` をすべて WSL で実行する**。WSL の既定シェルは zsh で、`wsl.exe -- bash -lic '...'` と書くと引数のクォートが崩れる（`<` `>` やコミットメッセージの改行で壊れる）。なので、実行する内容を scratchpad の bash スクリプトに書き、PowerShell から次のように実行する（Git Bash から呼ぶとパスが `C:/Program Files/Git/...` に書き換わる）:
+  ```powershell
+  wsl.exe -- bash -l /mnt/c/<scratchpad の WSL パス>/step.sh
   ```
-  `-i` を付けないと `~/.bashrc` が読まれず、linuxbrew の `gh` が PATH に入らない。
+  スクリプトの先頭に `export PATH=/home/linuxbrew/.linuxbrew/bin:$PATH` を書く（`gh` は linuxbrew にあり、bash のログインシェルでは PATH に入らない）。
 - WSL での `cargo` は `CARGO_TARGET_DIR=$HOME/.cache/tuc-target` を付けて実行する（`/mnt/x` 上の `target/` に Linux 版の成果物を混ぜない。9P 越しで遅いのも避ける）。`.deb` はそのディレクトリの `debian/` にできる。
 - コミットの作者は、リポジトリの `.git/config` に設定した `user.name` / `user.email`（`koukemo`）を使う。`git config user.name` が `koukemo` でなければ止まって確認する。
 - Windows 版の確認（`cargo fmt --check` / `cargo clippy` / `cargo build --release`）は Windows 側の `cargo` で行う。Linux / macOS 上で作業しているときは、全部そのまま実行してよい。
