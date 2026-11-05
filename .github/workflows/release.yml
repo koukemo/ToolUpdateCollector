@@ -17,8 +17,41 @@ jobs:
         run: cargo install cargo-deb --locked
       - name: Build .deb
         run: cargo deb
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deb
+          path: target/debian/*.deb
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build tuc.exe
+        run: cargo build --release --locked
+      # tuc update は tuc_<ver>_windows_x86_64.zip を探すので、この名前を崩さない
+      - name: Package zip
+        shell: pwsh
+        run: |
+          $ver = "${{ github.ref_name }}".TrimStart("v")
+          New-Item -ItemType Directory -Force dist/pkg | Out-Null
+          Copy-Item target/release/tuc.exe, README.md, LICENSE, THIRD_PARTY_LICENSES.txt dist/pkg/
+          Compress-Archive -Path dist/pkg/* -DestinationPath "dist/tuc_${ver}_windows_x86_64.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: dist/*.zip
+
+  release:
+    needs: [deb, windows]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
       - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: target/debian/*.deb
+          files: dist/*
           generate_release_notes: true

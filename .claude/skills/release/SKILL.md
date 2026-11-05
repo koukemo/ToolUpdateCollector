@@ -1,29 +1,44 @@
 ---
 name: release
-description: tuc（このリポジトリ）の変更をコミットしてPRを作り、rebase mergeでmainに取り込み、バージョンタグを打ってGitHub Releaseに.debを配置する。ユーザーが /release を実行したとき、または「リリースして」「PR作ってマージしてリリース」と頼んだときに使う。引数はバージョン指定（patch / minor / major / X.Y.Z）、省略時は patch。
+description: tuc（このリポジトリ）の変更をコミットしてPRを作り、rebase mergeでmainに取り込み、バージョンタグを打ってGitHub Releaseに.debとWindows版zipを配置する。ユーザーが /release を実行したとき、または「リリースして」「PR作ってマージしてリリース」と頼んだときに使う。引数はバージョン指定（patch / minor / major / X.Y.Z）、省略時は patch。
 ---
 
 # /release（tuc 用）
 
-commit → PR → rebase merge → タグ → GitHub Actions で `.deb` をビルド → Release に添付、までを行う。
+commit → PR → rebase merge → タグ → GitHub Actions で `.deb` と Windows 版 zip をビルド → Release に添付、までを行う。
 /release の実行そのものが、コミット・push・PR作成・マージ・タグ作成の許可になる。ただし「止まる」と書いた条件に当たったら、ユーザーに確認してから進める。
 
 前提:
 - リポジトリは `koukemo/ToolUpdateCollector`、既定ブランチは `main`。
-- リリースのworkflowは `.github/workflows/release.yml`。`v*` タグのpushで `cargo deb` を実行し、`target/debian/*.deb` を Release に添付する。
-- `tuc update` は最新 Release の `*_amd64.deb` / `*_arm64.deb` を探す。なので、**成果物のファイル名は `tuc_<ver>-1_<arch>.deb` 形式を崩さない**。
+- リリースのworkflowは `.github/workflows/release.yml`。`v*` タグのpushで、`cargo deb`（ubuntu）と `tuc.exe` の zip 化（windows）を行い、両方を Release に添付する。
+- `tuc update` は最新 Release の `*_amd64.deb` / `*_arm64.deb`（Linux）と `*_windows_x86_64.zip`（Windows）を探す。なので、**成果物のファイル名は `tuc_<ver>-1_<arch>.deb` と `tuc_<ver>_windows_x86_64.zip` の形式を崩さない**。
+
+## git / gh は WSL 側で実行する
+
+GitHub の操作は WSL の `gh`（github.com の `koukemo` アカウント）で行う。Windows 側の `gh` は別ホスト（社内 GHE）のアカウントなので使わない。
+
+- Windows 上で作業しているときは、**`git` / `gh` / `cargo deb` / `cargo about` をすべて WSL 経由で実行する**:
+  ```bash
+  wsl.exe -- bash -lic 'cd "$(wslpath "<リポジトリのWindowsパス>")" && <コマンド>'
+  ```
+  `-i` を付けないと `~/.bashrc` が読まれず、linuxbrew の `gh` が PATH に入らない。
+- WSL での `cargo` は `CARGO_TARGET_DIR=$HOME/.cache/tuc-target` を付けて実行する（`/mnt/x` 上の `target/` に Linux 版の成果物を混ぜない。9P 越しで遅いのも避ける）。`.deb` はそのディレクトリの `debian/` にできる。
+- コミットの作者は、リポジトリの `.git/config` に設定した `user.name` / `user.email`（`koukemo`）を使う。`git config user.name` が `koukemo` でなければ止まって確認する。
+- Windows 版の確認（`cargo fmt --check` / `cargo clippy` / `cargo build --release`）は Windows 側の `cargo` で行う。Linux / macOS 上で作業しているときは、全部そのまま実行してよい。
 
 ## 0. 事前確認
 
 ```bash
+# Windows 上ではすべて WSL 経由で
 git status --short
 git branch --show-current
 git remote -v
+git config user.name; git config user.email
 gh auth status
 gh repo view --json nameWithOwner,visibility,defaultBranchRef
 ```
 
-- `gh` が未ログイン → 止まって伝える。
+- `gh` が未ログイン、または github.com の `koukemo` でない → 止まって伝える。
 - GitHub にリポジトリがない → 公開か非公開かを確認してから、`gh repo create koukemo/ToolUpdateCollector --<public|private> --source . --remote origin` で作る。
   - 非公開だと、`tuc update` が認証なしで Release を取得できない。確認するときに、この点も伝える。
 - コミットに入る差分（未追跡ファイルも含む）に、秘密鍵、トークン、`.env`、パスワードらしき文字列がないかを確認する。
@@ -31,11 +46,18 @@ gh repo view --json nameWithOwner,visibility,defaultBranchRef
 ## 1. ローカルでの検証
 
 ```bash
+# Linux（Windows 上では WSL 経由、CARGO_TARGET_DIR=$HOME/.cache/tuc-target を付ける）
 cargo fmt --check
-cargo clippy --release -- -D warnings
+cargo clippy --release --all-targets -- -D warnings
+cargo test
 cargo about generate about.hbs -o THIRD_PARTY_LICENSES.txt   # 依存ライセンス一覧を再生成
 cargo build --release
 cargo deb
+
+# Windows（Windows 上で作業しているときのみ。Windows 側の cargo で）
+cargo clippy --release --all-targets -- -D warnings
+cargo test
+cargo build --release
 ```
 
 - `cargo about` がない → `cargo install cargo-about --locked --features cli`。
@@ -61,7 +83,7 @@ cargo deb
 - 変更をまとまりごとにコミットする（例: 機能の変更 / CI / バージョン更新 `chore: release vX.Y.Z`）。メッセージは日本語でも英語でもよい。末尾にはattributionを付ける。
 - `git push -u origin <branch>`
 - `gh pr create --base main --title "Release vX.Y.Z" --body ...`
-  - 本文には、変更の要約、成果物（`tuc_X.Y.Z-1_amd64.deb`）、ローカルで検証した内容を書く。
+  - 本文には、変更の要約、成果物（`tuc_X.Y.Z-1_amd64.deb` / `tuc_X.Y.Z_windows_x86_64.zip`）、ローカルで検証した内容を書く。
 
 ## 4. rebase merge
 
@@ -96,6 +118,6 @@ gh release view vX.Y.Z --json url,isDraft,assets --jq '{url, isDraft, assets: [.
 cargo build --release -q && ./target/release/tuc update --check   # 公開リポジトリのみ
 ```
 
-- `tuc_X.Y.Z-1_amd64.deb` が添付され、`isDraft: false` になっていることを確認する。
+- `tuc_X.Y.Z-1_amd64.deb` と `tuc_X.Y.Z_windows_x86_64.zip` が添付され、`isDraft: false` になっていることを確認する。
 - `tuc update --check` で新しい版が見えることを確認する。ローカルの版と同じなら「最新版です」と出るのが正しい。
 - 報告すること: PRのURL、マージしたcommit、リリースのURL、成果物の一覧。失敗したことや、やっていないことがあれば、それもはっきり書く。
