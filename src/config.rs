@@ -28,6 +28,7 @@ pub struct Entry {
     #[serde(default)]
     pub run_last: bool,
     /// root権限が必要 (sudo tuc 時は root のまま、それ以外は元ユーザーで実行)
+    /// Windows では管理者権限が必要 (未昇格なら UAC で昇格した tuc で実行)
     #[serde(default)]
     pub requires_root: bool,
     #[serde(default)]
@@ -69,7 +70,7 @@ impl Entry {
             t.push("最後");
         }
         if self.requires_root {
-            t.push("root");
+            t.push(privilege::ROOT_LABEL);
         }
         if cfg!(windows) && self.runner == Runner::Wsl {
             t.push("WSL");

@@ -7,6 +7,7 @@ mod update;
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use config::{Config, Entry};
+use std::path::{Path, PathBuf};
 
 #[derive(Parser)]
 #[command(
@@ -15,6 +16,9 @@ use config::{Config, Entry};
     about = "Tool Update Collector - 登録したコマンドをまとめて実行"
 )]
 struct Cli {
+    /// 設定ファイルのパス (省略時は既定の場所。環境変数 TUC_CONFIG でも指定可)
+    #[arg(long, global = true, value_name = "PATH")]
+    config: Option<PathBuf>,
     #[command(subcommand)]
     cmd: Option<Cmd>,
 }
@@ -22,7 +26,11 @@ struct Cli {
 #[derive(Subcommand)]
 enum Cmd {
     /// TUIを開かずに有効なコマンドをすべて実行
-    Run,
+    Run {
+        /// 終了前に Enter の入力を待つ (管理者ウィンドウで実行するときに使う)
+        #[arg(long, hide = true)]
+        pause: bool,
+    },
     /// 登録済みコマンドの一覧を表示
     List,
     /// コマンドを登録
@@ -64,15 +72,20 @@ fn main() {
 
 fn real_main() -> Result<()> {
     let cli = Cli::parse();
-    let path = config::config_path()?;
+    #[cfg(windows)]
+    update::cleanup_old_exe();
+    let path = match cli.config {
+        Some(p) => p,
+        None => config::config_path()?,
+    };
     let mut cfg = Config::load(&path)?;
 
     match cli.cmd {
         None => match tui::run(&mut cfg, &path)? {
-            tui::Action::Run => run_and_exit(&cfg),
+            tui::Action::Run => run_and_exit(&cfg, &path, false),
             tui::Action::Quit => Ok(()),
         },
-        Some(Cmd::Run) => run_and_exit(&cfg),
+        Some(Cmd::Run { pause }) => run_and_exit(&cfg, &path, pause),
         Some(Cmd::List) => {
             for (i, e) in cfg.commands.iter().enumerate() {
                 let on = if e.enabled { "x" } else { " " };
@@ -115,11 +128,55 @@ fn real_main() -> Result<()> {
     }
 }
 
-fn run_and_exit(cfg: &Config) -> Result<()> {
-    let results = runner::run_all(&cfg.commands)?;
-    runner::print_summary(&results);
-    if results.iter().any(|r| !r.success) {
+fn run_and_exit(cfg: &Config, path: &Path, pause: bool) -> Result<()> {
+    #[cfg(windows)]
+    if runner::needs_elevation(&cfg.commands) {
+        return run_elevated(path);
+    }
+    #[cfg(not(windows))]
+    let _ = path;
+
+    let results = runner::run_all(&cfg.commands);
+    if let Ok(results) = &results {
+        runner::print_summary(results);
+    }
+    let failed = results
+        .as_ref()
+        .map_or(true, |r| r.iter().any(|r| !r.success));
+    if pause {
+        if let Err(e) = &results {
+            eprintln!("\x1b[31mエラー:\x1b[0m {e:#}");
+        }
+        println!("\nEnter キーで閉じます");
+        let _ = std::io::stdin().read_line(&mut String::new());
+    }
+    results?;
+    if failed {
         std::process::exit(1);
     }
     Ok(())
+}
+
+/// 管理者権限が必要なコマンドがあるとき、UAC で昇格した tuc に実行させる
+#[cfg(windows)]
+fn run_elevated(path: &Path) -> Result<()> {
+    println!(
+        "\x1b[1;33m* 管理者権限が必要なコマンドがあります。UAC で昇格した別ウィンドウで実行します\x1b[0m"
+    );
+    let args = [
+        "--config".to_string(),
+        path.to_string_lossy().into_owned(),
+        "run".to_string(),
+        "--pause".to_string(),
+    ];
+    match privilege::run_self_elevated(&args)? {
+        Some(code) => {
+            println!("管理者ウィンドウでの実行が終わりました (終了コード {code})");
+            if code != 0 {
+                std::process::exit(code);
+            }
+            Ok(())
+        }
+        None => anyhow::bail!("UAC で昇格がキャンセルされたため、実行を中止しました"),
+    }
 }
