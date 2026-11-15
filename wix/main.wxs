@@ -74,7 +74,8 @@
             InstallerVersion='450'
             Languages='1033'
             Compressed='yes'
-            InstallScope='perMachine'
+            InstallScope='perUser'
+            InstallPrivileges='limited'
             SummaryCodepage='1252'
             />
 
@@ -85,49 +86,37 @@
         <Media Id='1' Cabinet='media1.cab' EmbedCab='yes' DiskPrompt='CD-ROM #1'/>
         <Property Id='DiskPrompt' Value='tuc Installation'/>
 
+        <!-- ユーザー単位: %LOCALAPPDATA%\Programs\tuc に入れ、ユーザーの PATH に追加する（管理者権限不要） -->
         <Directory Id='TARGETDIR' Name='SourceDir'>
-            <Directory Id='$(var.PlatformProgramFilesFolder)' Name='PFiles'>
-                <Directory Id='APPLICATIONFOLDER' Name='tuc'>
-                    <!--
-                      Disabling the license sidecar file in the installer is a two step process:
-
-                      1. Comment out or remove the `Component` tag along with its contents.
-                      2. Comment out or remove the `ComponentRef` tag with the "License" Id
-                         attribute value further down in this file.
-                    -->
-                    <Component Id='License' Guid='*'>
-                        <File Id='LicenseFile'
-                            DiskId='1'
-                            Source='LICENSE'
-                            KeyPath='yes'/>
-                    </Component>
-                    
-                    <Component Id='ThirdPartyLicenses' Guid='*'>
-                        <File Id='ThirdPartyLicensesFile'
-                            DiskId='1'
-                            Source='THIRD_PARTY_LICENSES.txt'
-                            KeyPath='yes'/>
-                    </Component>
-
-                    <Directory Id='Bin' Name='bin'>
-                        <Component Id='Path' Guid='F0ADA155-4408-4F55-A804-942F36E35DD3' KeyPath='yes'>
-                            <Environment
-                                Id='PATH'
-                                Name='PATH'
-                                Value='[Bin]'
-                                Permanent='no'
-                                Part='last'
-                                Action='set'
-                                System='yes'/>
+            <Directory Id='LocalAppDataFolder'>
+                <Directory Id='UserPrograms' Name='Programs'>
+                    <Directory Id='APPLICATIONFOLDER' Name='tuc'>
+                        <Component Id='License' Guid='*'>
+                            <File Id='LicenseFile' DiskId='1' Source='LICENSE'/>
+                            <File Id='ThirdPartyLicensesFile' DiskId='1' Source='THIRD_PARTY_LICENSES.txt'/>
+                            <RegistryValue Name='License' Root='HKCU' Key='Software\koukemo\tuc' Type='integer' Value='1' KeyPath='yes'/>
+                            <RemoveFolder Id='RemoveUserPrograms' Directory='UserPrograms' On='uninstall'/>
+                            <RemoveFolder Id='RemoveAppFolder' On='uninstall'/>
                         </Component>
-                        <Component Id='binary0' Guid='*'>
-                            <File
-                                Id='exe0'
-                                Name='tuc.exe'
-                                DiskId='1'
-                                Source='$(var.CargoTargetBinDir)\tuc.exe'
-                                KeyPath='yes'/>
-                        </Component>
+
+                        <Directory Id='Bin' Name='bin'>
+                            <Component Id='Path' Guid='F0ADA155-4408-4F55-A804-942F36E35DD3'>
+                                <Environment
+                                    Id='PATH'
+                                    Name='PATH'
+                                    Value='[Bin]'
+                                    Permanent='no'
+                                    Part='last'
+                                    Action='set'
+                                    System='no'/>
+                                <RegistryValue Name='Path' Root='HKCU' Key='Software\koukemo\tuc' Type='integer' Value='1' KeyPath='yes'/>
+                            </Component>
+                            <Component Id='binary0' Guid='*'>
+                                <File Id='exe0' Name='tuc.exe' DiskId='1' Source='$(var.CargoTargetBinDir)\tuc.exe'/>
+                                <RegistryValue Name='Binary' Root='HKCU' Key='Software\koukemo\tuc' Type='integer' Value='1' KeyPath='yes'/>
+                                <RemoveFolder Id='RemoveBin' On='uninstall'/>
+                            </Component>
+                        </Directory>
                     </Directory>
                 </Directory>
             </Directory>
@@ -147,14 +136,13 @@
               the license sidecar file from the installer.
             -->
             <ComponentRef Id='License'/>
-            <ComponentRef Id='ThirdPartyLicenses'/>
             
             <ComponentRef Id='binary0'/>
 
             <Feature
                 Id='Environment'
                 Title='PATH Environment Variable'
-                Description='Add the install location of the [ProductName] executable to the PATH system environment variable. This allows the [ProductName] executable to be called from any location.'
+                Description='Add the install location of the [ProductName] executable to the PATH user environment variable. This allows the [ProductName] executable to be called from any location.'
                 Level='1'
                 Absent='allow'>
                 <ComponentRef Id='Path'/>
