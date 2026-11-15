@@ -1,0 +1,42 @@
+# Windows のファイル（exe / msi など）に Authenticode 署名する composite action。
+# ほかのリポジトリからも `koukemo/ToolUpdateCollector/.github/actions/codesign@main` で使える。
+# 証明書が渡されなければ、何もせずに終わる（fork の PR などで失敗させない）。
+name: codesign
+description: Sign Windows binaries with a PFX certificate using signtool
+inputs:
+  files:
+    description: 署名するファイル（改行区切り、ワイルドカード可）
+    required: true
+  pfx-base64:
+    description: PFX を base64 にしたもの
+    required: false
+  pfx-password:
+    description: PFX のパスワード
+    required: false
+  timestamp-url:
+    description: タイムスタンプサーバー
+    required: false
+    default: http://timestamp.digicert.com
+runs:
+  using: composite
+  steps:
+    - shell: pwsh
+      env:
+        FILES: ${{ inputs.files }}
+        PFX_B64: ${{ inputs.pfx-base64 }}
+        PFX_PASSWORD: ${{ inputs.pfx-password }}
+        TS_URL: ${{ inputs.timestamp-url }}
+      run: |
+        if (-not $env:PFX_B64) { Write-Host "::notice::証明書がないので署名を省略します"; exit 0 }
+        $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\signtool.exe" |
+          Sort-Object FullName -Descending | Select-Object -First 1 -ExpandProperty FullName
+        if (-not $signtool) { throw "signtool.exe が見つかりません" }
+        $pfx = Join-Path $env:RUNNER_TEMP "codesign.pfx"
+        [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:PFX_B64))
+        try {
+          $targets = $env:FILES -split "`n" | Where-Object { $_.Trim() } |
+            ForEach-Object { Get-ChildItem $_.Trim() } | ForEach-Object FullName
+          if (-not $targets) { throw "署名するファイルがありません: $env:FILES" }
+          & $signtool sign /fd SHA256 /f $pfx /p $env:PFX_PASSWORD /tr $env:TS_URL /td SHA256 $targets
+          if ($LASTEXITCODE) { throw "signtool sign failed" }
+        } finally { Remove-Item $pfx -Force }

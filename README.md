@@ -30,13 +30,15 @@ Mac版は Developer ID 署名・公証を行っていない。macOS が起動を
 
 ### Windows
 
-`tuc_<version>_windows_x86_64.zip` を展開し、`tuc.exe` を PATH の通ったフォルダ（例: `%USERPROFILE%\.local\bin`）に置く。
+**MSI（おすすめ）**: `tuc_<version>_windows_x86_64.msi` を実行する。`%LOCALAPPDATA%\Programs\tuc` に入り、ユーザーの PATH に追加される（管理者権限は不要）。
+
+**zip**: `tuc_<version>_windows_x86_64.zip` を展開し、`tuc.exe` を PATH の通ったフォルダ（例: `%USERPROFILE%\.local\bin`）に置く。
 
 ```powershell
 tar -xf tuc_<version>_windows_x86_64.zip -C $env:USERPROFILE\.local\bin
 ```
 
-`tuc.exe` は署名していないため、初回の起動時に SmartScreen の警告が出ることがある。
+MSI と `tuc.exe` には自己署名の証明書で署名しているが、この証明書は一般には信頼されていない。そのため、初回の実行時に「Windows によって PC が保護されました」（SmartScreen）と表示されることがある。その場合は **「詳細情報」→「実行」** を押すと実行できる。zip の場合は、展開する前にファイルのプロパティで「許可する」にチェックを入れても警告を避けられる。
 
 ## 使い方
 
@@ -86,7 +88,7 @@ Windows 版では「root権限が必要」が **管理者権限が必要** に�
 
 ## リリース
 
-`v*` タグをpushすると、GitHub Actionsが `.deb`（Linux）、`tuc_<version>_windows_x86_64.zip`（Windows）、`tuc_<version>_macos_<arch>.tar.gz`（macOS: `aarch64` / `x86_64`）をビルドしてReleaseに添付する。
+`v*` タグをpushすると、GitHub Actionsが `.deb`（Linux）、`tuc_<version>_windows_x86_64.zip` / `.msi`（Windows）、`tuc_<version>_macos_<arch>.tar.gz`（macOS: `aarch64` / `x86_64`）をビルドしてReleaseに添付する。
 
 ## ライセンス
 

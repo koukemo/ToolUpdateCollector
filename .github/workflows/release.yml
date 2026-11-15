@@ -37,6 +37,12 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - name: Build tuc.exe
         run: cargo build --release --locked
+      - name: Sign tuc.exe
+        uses: ./.github/actions/codesign
+        with:
+          files: target/release/tuc.exe
+          pfx-base64: ${{ secrets.CODESIGN_PFX_BASE64 }}
+          pfx-password: ${{ secrets.CODESIGN_PFX_PASSWORD }}
       # tuc update は tuc_<ver>_windows_x86_64.zip を探すので、この名前を崩さない
       - name: Package zip
         shell: pwsh
@@ -98,7 +104,7 @@ jobs:
           fetch-depth: 0
       - name: Use wix/ from the dispatching ref
         if: github.event_name == 'workflow_dispatch'
-        run: git checkout ${{ github.sha }} -- wix
+        run: git checkout ${{ github.sha }} -- wix .github/actions
       - uses: dtolnay/rust-toolchain@stable
       - name: Install WiX 3.14 and cargo-wix
         shell: pwsh
@@ -106,13 +112,27 @@ jobs:
           Invoke-WebRequest https://github.com/wixtoolset/wix3/releases/download/wix3141rtm/wix314-binaries.zip -OutFile wix.zip
           Expand-Archive wix.zip $env:RUNNER_TEMP/wix
           cargo install cargo-wix --locked
+      - name: Build tuc.exe
+        run: cargo build --release --locked
+      - name: Sign tuc.exe
+        uses: ./.github/actions/codesign
+        with:
+          files: target/release/tuc.exe
+          pfx-base64: ${{ secrets.CODESIGN_PFX_BASE64 }}
+          pfx-password: ${{ secrets.CODESIGN_PFX_PASSWORD }}
       # tuc_<ver>_windows_x86_64.msi の形式を崩さない
       - name: Build MSI
         shell: pwsh
         run: |
           $ver = $env:TAG.TrimStart("v")
           New-Item -ItemType Directory -Force dist | Out-Null
-          cargo wix --nocapture -b "$env:RUNNER_TEMP/wix" -o "dist/tuc_${ver}_windows_x86_64.msi"
+          cargo wix --no-build --nocapture -b "$env:RUNNER_TEMP/wix" -o "dist/tuc_${ver}_windows_x86_64.msi"
+      - name: Sign MSI
+        uses: ./.github/actions/codesign
+        with:
+          files: dist/*.msi
+          pfx-base64: ${{ secrets.CODESIGN_PFX_BASE64 }}
+          pfx-password: ${{ secrets.CODESIGN_PFX_PASSWORD }}
       - name: Upload to existing release
         if: github.event_name == 'workflow_dispatch'
         shell: pwsh
