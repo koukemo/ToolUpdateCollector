@@ -50,3 +50,6 @@ assets = [
     ["LICENSE", "usr/share/doc/tuc/LICENSE", "644"],
     ["THIRD_PARTY_LICENSES.txt", "usr/share/doc/tuc/THIRD_PARTY_LICENSES.txt", "644"],
 ]
+
+[package.metadata.wix]
+eula = false

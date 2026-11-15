@@ -5,6 +5,12 @@ description: tuc（このリポジトリ）の変更をコミットしてPRを�
 
 # /release（tuc 用）
 
+## Windows MSI
+
+- workflow の `msi` ジョブが cargo-wix（WiX 3.14）で `tuc_<ver>_windows_x86_64.msi` を作り、Release に添付する。マシン全体へのインストール（Program Files、システムの PATH に追加）。定義は `wix/main.wxs`。
+- 公開済みのリリースに MSI だけを足すときは `gh workflow run release.yml -f tag=vX.Y.Z`（タグのコードを、main の `wix/` でビルドする）。
+- 最終確認では MSI も添付されていることを確認する。
+
 ## macOS 版（v0.2.1 以降）
 
 - workflow は Apple Silicon（`macos-15` / `aarch64-apple-darwin`）と Intel（`macos-15-intel` / `x86_64-apple-darwin`）もテスト・ビルドする。
