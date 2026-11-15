@@ -91,7 +91,7 @@
             <Directory Id='LocalAppDataFolder'>
                 <Directory Id='UserPrograms' Name='Programs'>
                     <Directory Id='APPLICATIONFOLDER' Name='tuc'>
-                        <Component Id='License' Guid='*'>
+                        <Component Id='License' Guid='38035C84-1945-490C-9B8C-2833C55772EB'>
                             <File Id='LicenseFile' DiskId='1' Source='LICENSE'/>
                             <File Id='ThirdPartyLicensesFile' DiskId='1' Source='THIRD_PARTY_LICENSES.txt'/>
                             <RegistryValue Name='License' Root='HKCU' Key='Software\koukemo\tuc' Type='integer' Value='1' KeyPath='yes'/>
@@ -111,7 +111,7 @@
                                     System='no'/>
                                 <RegistryValue Name='Path' Root='HKCU' Key='Software\koukemo\tuc' Type='integer' Value='1' KeyPath='yes'/>
                             </Component>
-                            <Component Id='binary0' Guid='*'>
+                            <Component Id='binary0' Guid='D35EAFD0-19F5-46C6-B209-742592F3DB99'>
                                 <File Id='exe0' Name='tuc.exe' DiskId='1' Source='$(var.CargoTargetBinDir)\tuc.exe'/>
                                 <RegistryValue Name='Binary' Root='HKCU' Key='Software\koukemo\tuc' Type='integer' Value='1' KeyPath='yes'/>
                                 <RemoveFolder Id='RemoveBin' On='uninstall'/>
