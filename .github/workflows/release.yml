@@ -3,12 +3,19 @@ name: release
 on:
   push:
     tags: ["v*"]
+  # 公開済みのリリースに MSI だけを追加する（タグのコードを、実行したブランチの wix/ でビルドする）
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "MSI を追加するリリースのタグ (例: v0.2.1)"
+        required: true
 
 permissions:
   contents: write
 
 jobs:
   deb:
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -23,6 +30,7 @@ jobs:
           path: target/debian/*.deb
 
   windows:
+    if: github.event_name == 'push'
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -43,6 +51,7 @@ jobs:
           path: dist/*.zip
 
   macos:
+    if: github.event_name == 'push'
     strategy:
       matrix:
         include:
@@ -77,8 +86,45 @@ jobs:
           name: macos-${{ matrix.arch }}
           path: dist/*.tar.gz
 
+  msi:
+    runs-on: windows-latest
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+          fetch-depth: 0
+      - name: Use wix/ from the dispatching ref
+        if: github.event_name == 'workflow_dispatch'
+        run: git checkout ${{ github.sha }} -- wix
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install WiX 3.14 and cargo-wix
+        shell: pwsh
+        run: |
+          Invoke-WebRequest https://github.com/wixtoolset/wix3/releases/download/wix3141rtm/wix314-binaries.zip -OutFile wix.zip
+          Expand-Archive wix.zip $env:RUNNER_TEMP/wix
+          cargo install cargo-wix --locked
+      # tuc_<ver>_windows_x86_64.msi の形式を崩さない
+      - name: Build MSI
+        shell: pwsh
+        run: |
+          $ver = $env:TAG.TrimStart("v")
+          New-Item -ItemType Directory -Force dist | Out-Null
+          cargo wix --nocapture -b "$env:RUNNER_TEMP/wix" -o "dist/tuc_${ver}_windows_x86_64.msi"
+      - name: Upload to existing release
+        if: github.event_name == 'workflow_dispatch'
+        shell: pwsh
+        run: gh release upload "$env:TAG" (Get-ChildItem dist/*.msi).FullName --clobber --repo ${{ github.repository }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: msi
+          path: dist/*.msi
+
   release:
-    needs: [deb, windows, macos]
+    if: github.event_name == 'push'
+    needs: [deb, windows, macos, msi]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
