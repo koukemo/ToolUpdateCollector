@@ -1,6 +1,6 @@
 ---
 name: release
-description: tuc（このリポジトリ）の変更をコミットしてPRを作り、rebase mergeでmainに取り込み、バージョンタグを打ってGitHub Releaseに.debとWindows版zipを配置する。ユーザーが /release を実行したとき、または「リリースして」「PR作ってマージしてリリース」と頼んだときに使う。引数はバージョン指定（patch / minor / major / X.Y.Z）、省略時は patch。
+description: tuc（このリポジトリ）の変更をコミットしてPRを作り、rebase mergeでmainに取り込み、バージョンタグを打ってGitHub Releaseに.deb・Windows版zip/MSI・macOS版を配置する。ユーザーが /release を実行したとき、または「リリースして」「PR作ってマージしてリリース」と頼んだときに使う。引数はバージョン指定（patch / minor / major / X.Y.Z）、省略時は patch。
 ---
 
 # /release（tuc 用）
@@ -19,7 +19,7 @@ description: tuc（このリポジトリ）の変更をコミットしてPRを�
 - macOS ローカルでは `cargo fmt --check` / `cargo clippy --release --all-targets -- -D warnings` / `cargo test` / `cargo build --release` / ライセンス再生成を行う。`cargo deb` は Linux でのみ実行する。
 - PR 本文・最終確認では既存の Linux / Windows 成果物に加え、Mac 向け2点も確認する。
 
-commit → PR → rebase merge → タグ → GitHub Actions で `.deb` と Windows 版 zip をビルド → Release に添付、までを行う。
+commit → PR → rebase merge → タグ → GitHub Actions で `.deb`・Windows 版 zip / MSI・macOS 版をビルド → Release に添付、までを行う。
 /release の実行そのものが、コミット・push・PR作成・マージ・タグ作成の許可になる。ただし「止まる」と書いた条件に当たったら、ユーザーに確認してから進める。
 
 前提:
@@ -27,23 +27,20 @@ commit → PR → rebase merge → タグ → GitHub Actions で `.deb` と Wind
 - リリースのworkflowは `.github/workflows/release.yml`。`v*` タグのpushで、`cargo deb`（ubuntu）と `tuc.exe` の zip 化（windows）を行い、両方を Release に添付する。
 - `tuc update` は最新 Release の `*_amd64.deb` / `*_arm64.deb`（Linux）と `*_windows_x86_64.zip`（Windows）を探す。なので、**成果物のファイル名は `tuc_<ver>-1_<arch>.deb` と `tuc_<ver>_windows_x86_64.zip` の形式を崩さない**。
 
-## git / gh は WSL 側で実行する
+## git / gh は Windows 側で実行する
 
-GitHub の操作は WSL の `gh`（github.com の `koukemo` アカウント）で行う。Windows 側の `gh` は別ホスト（社内 GHE）のアカウントなので使わない。
+GitHub の操作は Windows 側の `git` / `gh`（github.com の `koukemo` アカウント）で、PowerShell から直接行う。WSL の `gh` は別アカウント（`kou-agent`）なので使わない。
 
-- Windows 上で作業しているときは、**`git` / `gh` / `cargo deb` / `cargo about` をすべて WSL で実行する**。WSL の既定シェルは zsh で、`wsl.exe -- bash -lic '...'` と書くと引数のクォートが崩れる（`<` `>` やコミットメッセージの改行で壊れる）。なので、実行する内容を scratchpad の bash スクリプトに書き、PowerShell から次のように実行する（Git Bash から呼ぶとパスが `C:/Program Files/Git/...` に書き換わる）:
-  ```powershell
-  wsl.exe -- bash -l /mnt/c/<scratchpad の WSL パス>/step.sh
-  ```
-  スクリプトの先頭に `export PATH=/home/linuxbrew/.linuxbrew/bin:$PATH` を書く（`gh` は linuxbrew にあり、bash のログインシェルでは PATH に入らない）。
-- WSL での `cargo` は `CARGO_TARGET_DIR=$HOME/.cache/tuc-target` を付けて実行する（`/mnt/x` 上の `target/` に Linux 版の成果物を混ぜない。9P 越しで遅いのも避ける）。`.deb` はそのディレクトリの `debian/` にできる。
+- `gh auth status` が github.com の `koukemo` でなければ止まって確認する。
 - コミットの作者は、リポジトリの `.git/config` に設定した `user.name` / `user.email`（`koukemo`）を使う。`git config user.name` が `koukemo` でなければ止まって確認する。
-- Windows 版の確認（`cargo fmt --check` / `cargo clippy` / `cargo build --release`）は Windows 側の `cargo` で行う。Linux / macOS 上で作業しているときは、全部そのまま実行してよい。
+- `cargo fmt --check` / `cargo clippy` / `cargo test` / `cargo build --release` / `cargo about` は Windows 側の `cargo` で行う。
+- `cargo deb` だけは Linux 専用なので WSL で実行する。実行する内容を scratchpad の bash スクリプトに書き、PowerShell から `wsl.exe -- bash -l /mnt/c/<scratchpad の WSL パス>/step.sh` で呼ぶ（`bash -lic '...'` はクォートが崩れる。Git Bash から呼ぶとパスが書き換わる）。WSL の `cargo` には `CARGO_TARGET_DIR=$HOME/.cache/tuc-target` を付ける（`/mnt/x` 上の `target/` に Linux 版の成果物を混ぜない）。
+- Linux / macOS 上で作業しているときは、全部そのまま実行してよい。
 
 ## 0. 事前確認
 
 ```bash
-# Windows 上ではすべて WSL 経由で
+# Windows 上では PowerShell からそのまま
 git status --short
 git branch --show-current
 git remote -v
@@ -60,7 +57,7 @@ gh repo view --json nameWithOwner,visibility,defaultBranchRef
 ## 1. ローカルでの検証
 
 ```bash
-# Linux（Windows 上では WSL 経由、CARGO_TARGET_DIR=$HOME/.cache/tuc-target を付ける）
+# Linux（Windows 上では cargo deb だけ WSL 経由、CARGO_TARGET_DIR=$HOME/.cache/tuc-target を付ける。ほかは Windows 側の cargo で）
 cargo fmt --check
 cargo clippy --release --all-targets -- -D warnings
 cargo test
