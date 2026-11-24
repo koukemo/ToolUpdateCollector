@@ -16,17 +16,28 @@ permissions:
 jobs:
   deb:
     if: github.event_name == 'push'
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            arch: amd64
+          # Raspberry Pi OS / Debian 12（glibc 2.36）でも動くよう、glibc 2.35 の 22.04 でビルドする
+          - runner: ubuntu-22.04-arm
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - name: Install cargo-deb
         run: cargo install cargo-deb --locked
+      # tuc update は tuc_<ver>-1_<arch>.deb を探すので、この名前を崩さない
       - name: Build .deb
-        run: cargo deb
+        run: |
+          cargo deb
+          ls target/debian/*_${{ matrix.arch }}.deb
       - uses: actions/upload-artifact@v4
         with:
-          name: deb
+          name: deb-${{ matrix.arch }}
           path: target/debian/*.deb
 
   windows:
