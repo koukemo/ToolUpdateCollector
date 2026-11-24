@@ -9,7 +9,8 @@
 ### Linux（Debian / Ubuntu）
 
 ```sh
-sudo apt install ./tuc_<version>-1_amd64.deb
+sudo apt install ./tuc_<version>-1_amd64.deb   # x86_64
+sudo apt install ./tuc_<version>-1_arm64.deb   # Raspberry Pi などの arm64（Debian 12 以降）
 ```
 
 ### macOS（Apple Silicon / Intel）

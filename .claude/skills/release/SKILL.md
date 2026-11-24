@@ -24,7 +24,7 @@ commit → PR → rebase merge → タグ → GitHub Actions で `.deb`・Window
 
 前提:
 - リポジトリは `koukemo/ToolUpdateCollector`、既定ブランチは `main`。
-- リリースのworkflowは `.github/workflows/release.yml`。`v*` タグのpushで、`cargo deb`（ubuntu）と `tuc.exe` の zip 化（windows）を行い、両方を Release に添付する。
+- リリースのworkflowは `.github/workflows/release.yml`。`v*` タグのpushで、`cargo deb`（amd64 は ubuntu-latest、arm64 は glibc を古めに保つため ubuntu-22.04-arm）と `tuc.exe` の zip 化（windows）を行い、両方を Release に添付する。
 - `tuc update` は最新 Release の `*_amd64.deb` / `*_arm64.deb`（Linux）と `*_windows_x86_64.zip`（Windows）を探す。なので、**成果物のファイル名は `tuc_<ver>-1_<arch>.deb` と `tuc_<ver>_windows_x86_64.zip` の形式を崩さない**。
 
 ## git / gh は Windows 側で実行する
@@ -94,7 +94,7 @@ cargo build --release
 - 変更をまとまりごとにコミットする（例: 機能の変更 / CI / バージョン更新 `chore: release vX.Y.Z`）。メッセージは日本語でも英語でもよい。末尾にはattributionを付ける。
 - `git push -u origin <branch>`
 - `gh pr create --base main --title "Release vX.Y.Z" --body ...`
-  - 本文には、変更の要約、成果物（`tuc_X.Y.Z-1_amd64.deb` / `tuc_X.Y.Z_windows_x86_64.zip`）、ローカルで検証した内容を書く。
+  - 本文には、変更の要約、成果物（`tuc_X.Y.Z-1_amd64.deb` / `tuc_X.Y.Z-1_arm64.deb` / `tuc_X.Y.Z_windows_x86_64.zip`）、ローカルで検証した内容を書く。
 
 ## 4. rebase merge
 
@@ -129,6 +129,6 @@ gh release view vX.Y.Z --json url,isDraft,assets --jq '{url, isDraft, assets: [.
 cargo build --release -q && ./target/release/tuc update --check   # 公開リポジトリのみ
 ```
 
-- `tuc_X.Y.Z-1_amd64.deb` と `tuc_X.Y.Z_windows_x86_64.zip` が添付され、`isDraft: false` になっていることを確認する。
+- `tuc_X.Y.Z-1_amd64.deb`・`tuc_X.Y.Z-1_arm64.deb`・`tuc_X.Y.Z_windows_x86_64.zip` が添付され、`isDraft: false` になっていることを確認する。
 - `tuc update --check` で新しい版が見えることを確認する。ローカルの版と同じなら「最新版です」と出るのが正しい。
 - 報告すること: PRのURL、マージしたcommit、リリースのURL、成果物の一覧。失敗したことや、やっていないことがあれば、それもはっきり書く。
