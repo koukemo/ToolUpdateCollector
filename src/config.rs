@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use crate::privilege;
@@ -33,6 +34,8 @@ pub struct Entry {
     pub requires_root: bool,
     #[serde(default)]
     pub runner: Runner,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wsl_shell: Option<String>,
 }
 
 fn default_true() -> bool {
@@ -58,6 +61,7 @@ impl Entry {
             interactive: false,
             run_last: false,
             runner: Runner::Native,
+            wsl_shell: None,
         }
     }
 
@@ -88,6 +92,14 @@ pub fn looks_like_sudo(cmd: &str) -> bool {
 pub struct Config {
     #[serde(default)]
     pub commands: Vec<Entry>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub profiles: BTreeMap<String, Profile>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct Profile {
+    #[serde(default)]
+    pub commands: Vec<Entry>,
 }
 
 pub fn config_path() -> Result<PathBuf> {
@@ -103,6 +115,34 @@ pub fn config_path() -> Result<PathBuf> {
 }
 
 impl Config {
+    pub fn commands(&self, profile: Option<&str>) -> &[Entry] {
+        match profile {
+            Some(name) => &self.profiles[name].commands,
+            None => &self.commands,
+        }
+    }
+
+    pub fn commands_mut(&mut self, profile: Option<&str>) -> &mut Vec<Entry> {
+        match profile {
+            Some(name) => {
+                &mut self
+                    .profiles
+                    .get_mut(name)
+                    .expect("selected profile")
+                    .commands
+            }
+            None => &mut self.commands,
+        }
+    }
+
+    pub fn validate_profile_name(name: &str) -> Result<()> {
+        anyhow::ensure!(
+            !name.trim().is_empty() && !name.chars().any(char::is_control),
+            "プロファイル名を入力してください (制御文字は使用できません)"
+        );
+        Ok(())
+    }
+
     pub fn load(path: &Path) -> Result<Self> {
         if !path.exists() {
             return Ok(Self::default());
