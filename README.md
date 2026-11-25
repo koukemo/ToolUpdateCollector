@@ -74,6 +74,12 @@ tuc --config <path> ...  # 設定ファイルを指定 (環境変数 TUC_CONFIG 
 - **root権限が必要**: `sudo` を含むと自動でオンになる。通常起動のときは、最初に `sudo -v` でまとめて認証する
 - **WSLで実行**（Windows版のみ）: WSL 上で実行する。**WSLシェル**欄には `zsh` や `/usr/bin/fish` など、WSL にインストール済みで `-lc` に対応するシェルを指定できる。空欄は `bash`。
 
+WSL の zsh は `-lc` で非対話起動するため、対話シェル用の `~/.zshrc` は読み込まれません。Homebrew の PATH を `~/.zshrc` で設定している場合は、TUC の「WSLシェル」を `zsh` にして、次のコマンドを登録できます。Homebrew を別の場所にインストールした場合は `brew` の絶対パスを置き換えてください。
+
+```zsh
+eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv zsh)" && brew update && brew upgrade
+```
+
 `sudo tuc` で起動すると、root不要のコマンド（brewなど）は `sudo -i -u $SUDO_USER` で元のユーザーとして実行する。設定ファイルも元のユーザーのものを使う。
 
 ### プロファイル
