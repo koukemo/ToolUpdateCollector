@@ -19,6 +19,9 @@ struct Cli {
     /// 設定ファイルのパス (省略時は既定の場所。環境変数 TUC_CONFIG でも指定可)
     #[arg(long, global = true, value_name = "PATH")]
     config: Option<PathBuf>,
+    /// 対象のプロファイル (省略時は既定)
+    #[arg(long, global = true, value_name = "NAME")]
+    profile: Option<String>,
     #[command(subcommand)]
     cmd: Option<Cmd>,
 }
@@ -52,6 +55,10 @@ enum Cmd {
         #[cfg(windows)]
         #[arg(short, long)]
         wsl: bool,
+        /// WSL のシェル名または実行ファイルのパス (既定: bash)
+        #[cfg(windows)]
+        #[arg(long, requires = "wsl")]
+        wsl_shell: Option<String>,
     },
     /// 設定ファイルのパスを表示
     ConfigPath,
@@ -80,14 +87,27 @@ fn real_main() -> Result<()> {
     };
     let mut cfg = Config::load(&path)?;
 
+    let profile = cli.profile.as_deref();
+    if let Some(name) = profile {
+        Config::validate_profile_name(name)?;
+        if matches!(&cli.cmd, Some(Cmd::Add { .. })) {
+            cfg.profiles.entry(name.to_string()).or_default();
+        } else if matches!(&cli.cmd, None | Some(Cmd::Run { .. } | Cmd::List)) {
+            anyhow::ensure!(
+                cfg.profiles.contains_key(name),
+                "プロファイルが見つかりません: {name}"
+            );
+        }
+    }
+
     match cli.cmd {
-        None => match tui::run(&mut cfg, &path)? {
-            tui::Action::Run => run_and_exit(&cfg, &path, false),
+        None => match tui::run(&mut cfg, &path, cli.profile)? {
+            tui::Action::Run(profile) => run_and_exit(&cfg, &path, profile.as_deref(), false),
             tui::Action::Quit => Ok(()),
         },
-        Some(Cmd::Run { pause }) => run_and_exit(&cfg, &path, pause),
+        Some(Cmd::Run { pause }) => run_and_exit(&cfg, &path, profile, pause),
         Some(Cmd::List) => {
-            for (i, e) in cfg.commands.iter().enumerate() {
+            for (i, e) in cfg.commands(profile).iter().enumerate() {
                 let on = if e.enabled { "x" } else { " " };
                 println!(
                     "{:>2}. [{on}] {:<16} {}  {}",
@@ -107,6 +127,8 @@ fn real_main() -> Result<()> {
             root,
             #[cfg(windows)]
             wsl,
+            #[cfg(windows)]
+            wsl_shell,
         }) => {
             let mut e = Entry::new(name, command);
             e.interactive = interactive;
@@ -115,9 +137,12 @@ fn real_main() -> Result<()> {
             #[cfg(windows)]
             if wsl {
                 e.runner = config::Runner::Wsl;
+                e.wsl_shell = wsl_shell
+                    .map(|shell| shell.trim().to_owned())
+                    .filter(|shell| !shell.is_empty());
             }
             println!("登録しました: {}", e.name);
-            cfg.commands.push(e);
+            cfg.commands_mut(profile).push(e);
             cfg.save(&path)
         }
         Some(Cmd::ConfigPath) => {
@@ -128,15 +153,16 @@ fn real_main() -> Result<()> {
     }
 }
 
-fn run_and_exit(cfg: &Config, path: &Path, pause: bool) -> Result<()> {
+fn run_and_exit(cfg: &Config, path: &Path, profile: Option<&str>, pause: bool) -> Result<()> {
+    let commands = cfg.commands(profile);
     #[cfg(windows)]
-    if runner::needs_elevation(&cfg.commands) {
-        return run_elevated(path);
+    if runner::needs_elevation(commands) {
+        return run_elevated(path, profile);
     }
     #[cfg(not(windows))]
     let _ = path;
 
-    let results = runner::run_all(&cfg.commands);
+    let results = runner::run_all(commands);
     if let Ok(results) = &results {
         runner::print_summary(results);
     }
@@ -159,16 +185,19 @@ fn run_and_exit(cfg: &Config, path: &Path, pause: bool) -> Result<()> {
 
 /// 管理者権限が必要なコマンドがあるとき、UAC で昇格した tuc に実行させる
 #[cfg(windows)]
-fn run_elevated(path: &Path) -> Result<()> {
+fn run_elevated(path: &Path, profile: Option<&str>) -> Result<()> {
     println!(
         "\x1b[1;33m* 管理者権限が必要なコマンドがあります。UAC で昇格した別ウィンドウで実行します\x1b[0m"
     );
-    let args = [
+    let mut args = vec![
         "--config".to_string(),
         path.to_string_lossy().into_owned(),
         "run".to_string(),
         "--pause".to_string(),
     ];
+    if let Some(name) = profile {
+        args.push(format!("--profile={name}"));
+    }
     match privilege::run_self_elevated(&args)? {
         Some(code) => {
             println!("管理者ウィンドウでの実行が終わりました (終了コード {code})");

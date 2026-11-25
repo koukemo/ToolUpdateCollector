@@ -109,7 +109,12 @@ fn build_command(e: &Entry, _root: bool) -> Command {
     match e.runner {
         Runner::Wsl => {
             let mut c = Command::new("wsl.exe");
-            c.args(["--", "bash", "-lc", &e.command]);
+            c.args([
+                "--exec",
+                e.wsl_shell.as_deref().unwrap_or("bash"),
+                "-lc",
+                &e.command,
+            ]);
             c
         }
         Runner::Native => {

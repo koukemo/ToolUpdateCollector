@@ -72,9 +72,21 @@ tuc --config <path> ...  # 設定ファイルを指定 (環境変数 TUC_CONFIG 
 - **対話**: 標準入力をつなぐ。オフのときは標準入力を閉じるので、入力待ちで止まらない
 - **最後に実行**: 他のコマンドがすべて終わった後に実行
 - **root権限が必要**: `sudo` を含むと自動でオンになる。通常起動のときは、最初に `sudo -v` でまとめて認証する
-- **WSLで実行**（Windows版のみ。Linux / macOS 版には存在しない）: `wsl.exe -- bash -lc` 経由で実行する
+- **WSLで実行**（Windows版のみ）: WSL 上で実行する。**WSLシェル**欄には `zsh` や `/usr/bin/fish` など、WSL にインストール済みで `-lc` に対応するシェルを指定できる。空欄は `bash`。
 
 `sudo tuc` で起動すると、root不要のコマンド（brewなど）は `sudo -i -u $SUDO_USER` で元のユーザーとして実行する。設定ファイルも元のユーザーのものを使う。
+
+### プロファイル
+
+既存の登録コマンドは「既定」タブに表示されます。TUI で `p` を押してプロファイルを作成し、`[` / `]` でタブを切り替えます。`a` は選択中のタブにコマンドを登録し、`r` はそのタブの有効なコマンドを実行します。
+
+```powershell
+tuc --profile Git add "git -C ~/src/project pull --ff-only" --wsl --wsl-shell zsh
+tuc --profile Git list
+tuc --profile Git run
+```
+
+CLI の `add` は指定したプロファイルがなければ作成します。`--profile` を省略すると「既定」が対象になります。
 
 ### Windows の管理者権限
 

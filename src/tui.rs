@@ -14,7 +14,7 @@ use crate::config::{looks_like_sudo, Config, Entry, Runner};
 use crate::privilege;
 
 pub enum Action {
-    Run,
+    Run(Option<String>),
     Quit,
 }
 
@@ -63,13 +63,25 @@ impl Input {
             self.text.remove(i);
         }
     }
+    fn handle_key(&mut self, key: KeyEvent) {
+        match key.code {
+            KeyCode::Char(c) => self.insert(c),
+            KeyCode::Backspace => self.backspace(),
+            KeyCode::Delete => self.delete(),
+            KeyCode::Left => self.cursor = self.cursor.saturating_sub(1),
+            KeyCode::Right => self.cursor = (self.cursor + 1).min(self.text.chars().count()),
+            KeyCode::Home => self.cursor = 0,
+            KeyCode::End => self.cursor = self.text.chars().count(),
+            _ => {}
+        }
+    }
     fn width_before_cursor(&self) -> u16 {
         self.text[..self.byte_idx()].width() as u16
     }
 }
 
 /// WSLで実行 はWindows版にのみ存在する
-const FIELDS: usize = if cfg!(windows) { 6 } else { 5 };
+const FIELDS: usize = if cfg!(windows) { 7 } else { 5 };
 
 struct Form {
     index: Option<usize>,
@@ -79,6 +91,7 @@ struct Form {
     run_last: bool,
     requires_root: bool,
     wsl: bool,
+    wsl_shell: Input,
     root_touched: bool,
     field: usize,
     error: Option<String>,
@@ -94,6 +107,7 @@ impl Form {
             run_last: false,
             requires_root: false,
             wsl: false,
+            wsl_shell: Input::default(),
             root_touched: false,
             field: 0,
             error: None,
@@ -108,6 +122,7 @@ impl Form {
             run_last: e.run_last,
             requires_root: e.requires_root,
             wsl: e.runner == Runner::Wsl,
+            wsl_shell: Input::new(e.wsl_shell.as_deref().unwrap_or("")),
             root_touched: true,
             field: 0,
             error: None,
@@ -117,6 +132,7 @@ impl Form {
         match self.field {
             0 => Some(&mut self.name),
             1 => Some(&mut self.command),
+            6 => Some(&mut self.wsl_shell),
             _ => None,
         }
     }
@@ -138,10 +154,12 @@ enum Mode {
     Normal,
     Edit(Form),
     ConfirmDelete,
+    NewProfile(Input),
 }
 
 struct App<'a> {
     cfg: &'a mut Config,
+    profile: Option<String>,
     path: &'a Path,
     state: ListState,
     focus: Focus,
@@ -149,11 +167,13 @@ struct App<'a> {
     message: Option<String>,
 }
 
-pub fn run(cfg: &mut Config, path: &Path) -> Result<Action> {
+pub fn run(cfg: &mut Config, path: &Path, profile: Option<String>) -> Result<Action> {
     let mut terminal = ratatui::init();
     let mut app = App {
-        state: ListState::default().with_selected((!cfg.commands.is_empty()).then_some(0)),
+        state: ListState::default()
+            .with_selected((!cfg.commands(profile.as_deref()).is_empty()).then_some(0)),
         cfg,
+        profile,
         path,
         focus: Focus::List,
         mode: Mode::Normal,
@@ -165,6 +185,31 @@ pub fn run(cfg: &mut Config, path: &Path) -> Result<Action> {
 }
 
 impl App<'_> {
+    fn entries(&self) -> &[Entry] {
+        self.cfg.commands(self.profile.as_deref())
+    }
+
+    fn entries_mut(&mut self) -> &mut Vec<Entry> {
+        self.cfg.commands_mut(self.profile.as_deref())
+    }
+
+    fn select_profile(&mut self, profile: Option<String>) {
+        self.profile = profile;
+        self.state = ListState::default().with_selected((!self.entries().is_empty()).then_some(0));
+        self.focus = Focus::List;
+    }
+
+    fn switch_profile(&mut self, forward: bool) {
+        let mut profiles = vec![None];
+        profiles.extend(self.cfg.profiles.keys().cloned().map(Some));
+        let current = profiles
+            .iter()
+            .position(|name| name == &self.profile)
+            .unwrap_or(0);
+        let offset = if forward { 1 } else { profiles.len() - 1 };
+        self.select_profile(profiles[(current + offset) % profiles.len()].clone());
+    }
+
     fn event_loop(&mut self, terminal: &mut DefaultTerminal) -> Result<Action> {
         loop {
             terminal.draw(|f| self.draw(f))?;
@@ -189,9 +234,7 @@ impl App<'_> {
     }
 
     fn selected(&self) -> Option<usize> {
-        self.state
-            .selected()
-            .filter(|&i| i < self.cfg.commands.len())
+        self.state.selected().filter(|&i| i < self.entries().len())
     }
 
     fn handle_key(&mut self, key: KeyEvent) -> Result<Option<Action>> {
@@ -201,16 +244,39 @@ impl App<'_> {
             Mode::ConfirmDelete => {
                 if matches!(key.code, KeyCode::Char('y') | KeyCode::Char('Y')) {
                     if let Some(i) = self.selected() {
-                        self.cfg.commands.remove(i);
-                        if self.cfg.commands.is_empty() {
+                        self.entries_mut().remove(i);
+                        if self.entries().is_empty() {
                             self.state.select(None);
                         } else {
-                            self.state.select(Some(i.min(self.cfg.commands.len() - 1)));
+                            self.state.select(Some(i.min(self.entries().len() - 1)));
                         }
                         self.save();
                     }
                 }
             }
+            Mode::NewProfile(mut input) => match key.code {
+                KeyCode::Esc => {}
+                KeyCode::Enter => {
+                    let name = input.text.trim();
+                    if let Err(err) = Config::validate_profile_name(name) {
+                        self.message = Some(err.to_string());
+                        self.mode = Mode::NewProfile(input);
+                    } else if self.cfg.profiles.contains_key(name) {
+                        self.message = Some("同名のプロファイルがあります".into());
+                        self.mode = Mode::NewProfile(input);
+                    } else {
+                        self.cfg
+                            .profiles
+                            .insert(name.to_string(), Default::default());
+                        self.select_profile(Some(name.to_string()));
+                        self.save();
+                    }
+                }
+                _ => {
+                    input.handle_key(key);
+                    self.mode = Mode::NewProfile(input);
+                }
+            },
             Mode::Edit(mut form) => {
                 if !self.handle_form(&mut form, key) {
                     self.mode = Mode::Edit(form);
@@ -223,6 +289,9 @@ impl App<'_> {
     fn handle_normal(&mut self, key: KeyEvent) -> Option<Action> {
         let shift = key.modifiers.contains(KeyModifiers::SHIFT);
         match key.code {
+            KeyCode::Char('[') => self.switch_profile(false),
+            KeyCode::Char(']') => self.switch_profile(true),
+            KeyCode::Char('p') => self.mode = Mode::NewProfile(Input::default()),
             KeyCode::Tab => {
                 self.focus = match self.focus {
                     Focus::List => Focus::Run,
@@ -245,13 +314,13 @@ impl App<'_> {
                 };
             }
             KeyCode::Esc | KeyCode::Char('q') => return Some(Action::Quit),
-            KeyCode::Char('r') => return Some(Action::Run),
+            KeyCode::Char('r') => return Some(Action::Run(self.profile.clone())),
             KeyCode::Enter => match self.focus {
-                Focus::Run => return Some(Action::Run),
+                Focus::Run => return Some(Action::Run(self.profile.clone())),
                 Focus::Cancel => return Some(Action::Quit),
                 Focus::List => {
                     if let Some(i) = self.selected() {
-                        self.mode = Mode::Edit(Form::edit(i, &self.cfg.commands[i]));
+                        self.mode = Mode::Edit(Form::edit(i, &self.entries()[i]));
                     }
                 }
             },
@@ -269,14 +338,15 @@ impl App<'_> {
             }
             KeyCode::Char(' ') => {
                 if let Some(i) = self.selected() {
-                    self.cfg.commands[i].enabled = !self.cfg.commands[i].enabled;
+                    let entry = &mut self.entries_mut()[i];
+                    entry.enabled = !entry.enabled;
                     self.save();
                 }
             }
             KeyCode::Char('a') => self.mode = Mode::Edit(Form::new()),
             KeyCode::Char('e') => {
                 if let Some(i) = self.selected() {
-                    self.mode = Mode::Edit(Form::edit(i, &self.cfg.commands[i]));
+                    self.mode = Mode::Edit(Form::edit(i, &self.entries()[i]));
                 }
             }
             KeyCode::Char('d') | KeyCode::Delete if self.selected().is_some() => {
@@ -290,10 +360,10 @@ impl App<'_> {
     fn move_entry(&mut self, delta: isize) {
         let Some(i) = self.selected() else { return };
         let j = i as isize + delta;
-        if j < 0 || j as usize >= self.cfg.commands.len() {
+        if j < 0 || j as usize >= self.entries().len() {
             return;
         }
-        self.cfg.commands.swap(i, j as usize);
+        self.entries_mut().swap(i, j as usize);
         self.state.select(Some(j as usize));
         self.save();
     }
@@ -307,18 +377,7 @@ impl App<'_> {
             KeyCode::BackTab | KeyCode::Up => form.field = (form.field + FIELDS - 1) % FIELDS,
             _ => {
                 if let Some(input) = form.text_input() {
-                    match key.code {
-                        KeyCode::Char(c) => input.insert(c),
-                        KeyCode::Backspace => input.backspace(),
-                        KeyCode::Delete => input.delete(),
-                        KeyCode::Left => input.cursor = input.cursor.saturating_sub(1),
-                        KeyCode::Right => {
-                            input.cursor = (input.cursor + 1).min(input.text.chars().count())
-                        }
-                        KeyCode::Home => input.cursor = 0,
-                        KeyCode::End => input.cursor = input.text.chars().count(),
-                        _ => {}
-                    }
+                    input.handle_key(key);
                     if form.field == 1 && !form.root_touched {
                         form.requires_root = looks_like_sudo(&form.command.text);
                     }
@@ -345,14 +404,16 @@ impl App<'_> {
         } else {
             Runner::Native
         };
+        let shell = form.wsl_shell.text.trim();
+        e.wsl_shell = (!shell.is_empty()).then(|| shell.to_owned());
         match form.index {
             Some(i) => {
-                e.enabled = self.cfg.commands[i].enabled;
-                self.cfg.commands[i] = e;
+                e.enabled = self.entries()[i].enabled;
+                self.entries_mut()[i] = e;
             }
             None => {
-                self.cfg.commands.push(e);
-                self.state.select(Some(self.cfg.commands.len() - 1));
+                self.entries_mut().push(e);
+                self.state.select(Some(self.entries().len() - 1));
             }
         }
         self.save();
@@ -362,10 +423,11 @@ impl App<'_> {
     // ---------- 描画 ----------
 
     fn draw(&mut self, f: &mut Frame) {
-        let [title, list, help, buttons] = Layout::vertical([
+        let [title, tabs, list, help, buttons] = Layout::vertical([
+            Constraint::Length(1),
             Constraint::Length(1),
             Constraint::Min(3),
-            Constraint::Length(2),
+            Constraint::Length(3),
             Constraint::Length(3),
         ])
         .areas(f.area());
@@ -388,13 +450,44 @@ impl App<'_> {
         }
         f.render_widget(Line::from(t), title);
 
+        let names = std::iter::once((None, "既定")).chain(
+            self.cfg
+                .profiles
+                .keys()
+                .map(|name| (Some(name.as_str()), name.as_str())),
+        );
+        let mut tabs_line = Vec::new();
+        let names: Vec<_> = names.collect();
+        let selected = names
+            .iter()
+            .position(|(name, _)| *name == self.profile.as_deref())
+            .unwrap_or(0);
+        let before_width: usize = names[..selected]
+            .iter()
+            .map(|(_, label)| label.width() + 4)
+            .sum();
+        let start = if before_width + names[selected].1.width() + 4 > usize::from(tabs.width) {
+            selected
+        } else {
+            0
+        };
+        for (name, label) in &names[start..] {
+            let span = Span::raw(format!(" {label} "));
+            tabs_line.push(if *name == self.profile.as_deref() {
+                span.fg(Color::Black).bg(Color::Cyan).bold()
+            } else {
+                span.dim()
+            });
+            tabs_line.push(Span::raw("  "));
+        }
+        f.render_widget(Line::from(tabs_line), tabs);
         self.draw_list(f, list);
 
         let help_text = match (&self.mode, &self.message) {
             (_, Some(m)) => Line::from(m.clone()).fg(Color::Red),
             (Mode::ConfirmDelete, _) => Line::from("選択中のコマンドを削除しますか? (y/N)").fg(Color::Yellow),
             _ => Line::from(
-                "Tab:フォーカス移動  ↑↓:選択  Space:有効/無効  a:追加  e/Enter:編集  d:削除  J/K:並べ替え  r:実行  q:終了",
+                "[/]:プロファイル切替  p:プロファイル追加  Tab:フォーカス移動  ↑↓:選択  Space:有効/無効  a:追加  e/Enter:編集  d:削除  J/K:並べ替え  r:実行  q:終了",
             )
             .dim(),
         };
@@ -405,23 +498,36 @@ impl App<'_> {
 
         self.draw_buttons(f, buttons);
 
-        if let Mode::Edit(form) = &self.mode {
-            draw_form(f, form);
+        match &self.mode {
+            Mode::Edit(form) => draw_form(f, form),
+            Mode::NewProfile(input) => {
+                let area = centered(f.area(), 70, 3);
+                f.render_widget(Clear, area);
+                let block =
+                    Block::bordered().title(" プロファイル名 (Enter:追加 / Esc:キャンセル) ");
+                let inner = block.inner(area);
+                f.render_widget(Paragraph::new(input.text.as_str()).block(block), area);
+                if inner.width > 0 && inner.height > 0 {
+                    f.set_cursor_position(Position::new(
+                        inner.x + input.width_before_cursor().min(inner.width - 1),
+                        inner.y,
+                    ));
+                }
+            }
+            _ => {}
         }
     }
 
     fn draw_list(&mut self, f: &mut Frame, area: Rect) {
         let name_w = self
-            .cfg
-            .commands
+            .entries()
             .iter()
             .map(|e| e.name.width())
             .max()
             .unwrap_or(0)
             .min(20);
         let items: Vec<ListItem> = self
-            .cfg
-            .commands
+            .entries()
             .iter()
             .map(|e| {
                 let check = if e.enabled { "[x] " } else { "[ ] " };
@@ -589,9 +695,10 @@ fn draw_form(f: &mut Frame, form: &Form) {
     );
     if cfg!(windows) {
         f.render_widget(
-            check(5, "WSLで実行", form.wsl, "WSL上の bash で実行"),
+            check(5, "WSLで実行", form.wsl, "WSL のシェルで実行"),
             rows[6],
         );
+        f.render_widget(text_row(6, "WSLシェル: ", &form.wsl_shell), rows[7]);
     }
 
     if let Some(err) = &form.error {
@@ -599,12 +706,13 @@ fn draw_form(f: &mut Frame, form: &Form) {
     }
 
     let input = match form.field {
-        0 => Some((&form.name, rows[0])),
-        1 => Some((&form.command, rows[1])),
+        0 => Some((&form.name, rows[0], "名前    : ")),
+        1 => Some((&form.command, rows[1], "コマンド: ")),
+        6 => Some((&form.wsl_shell, rows[7], "WSLシェル: ")),
         _ => None,
     };
-    if let Some((input, row)) = input {
-        let x = row.x + 11 + input.width_before_cursor();
+    if let Some((input, row, label)) = input {
+        let x = row.x + 1 + label.width() as u16 + input.width_before_cursor();
         f.set_cursor_position(Position::new(x.min(row.right().saturating_sub(1)), row.y));
     }
 }
