@@ -200,6 +200,9 @@ impl App<'_> {
     }
 
     fn switch_profile(&mut self, forward: bool) {
+        if self.cfg.profiles.is_empty() {
+            return;
+        }
         let mut profiles = vec![None];
         profiles.extend(self.cfg.profiles.keys().cloned().map(Some));
         let current = profiles
@@ -313,6 +316,8 @@ impl App<'_> {
                     Focus::Run
                 };
             }
+            KeyCode::Left => self.switch_profile(false),
+            KeyCode::Right => self.switch_profile(true),
             KeyCode::Esc | KeyCode::Char('q') => return Some(Action::Quit),
             KeyCode::Char('r') => return Some(Action::Run(self.profile.clone())),
             KeyCode::Enter => match self.focus {
@@ -485,11 +490,22 @@ impl App<'_> {
 
         let help_text = match (&self.mode, &self.message) {
             (_, Some(m)) => Line::from(m.clone()).fg(Color::Red),
-            (Mode::ConfirmDelete, _) => Line::from("選択中のコマンドを削除しますか? (y/N)").fg(Color::Yellow),
-            _ => Line::from(
-                "[/]:プロファイル切替  p:プロファイル追加  Tab:フォーカス移動  ↑↓:選択  Space:有効/無効  a:追加  e/Enter:編集  d:削除  J/K:並べ替え  r:実行  q:終了",
-            )
-            .dim(),
+            (Mode::ConfirmDelete, _) => {
+                Line::from("選択中のコマンドを削除しますか? (y/N)").fg(Color::Yellow)
+            }
+            _ => {
+                let profile_help = if self.cfg.profiles.is_empty() {
+                    "p:プロファイルを作成"
+                } else if self.focus == Focus::List {
+                    "← / → または [ / ]:プロファイル切替  p:追加"
+                } else {
+                    "[ / ]:プロファイル切替  p:追加"
+                };
+                Line::from(format!(
+                    "{profile_help}  Tab:フォーカス移動  ↑↓:選択  Space:有効/無効  a:コマンド追加  e/Enter:編集  d:削除  J/K:並べ替え  r:実行  q:終了"
+                ))
+                .dim()
+            }
         };
         f.render_widget(
             Paragraph::new(help_text).wrap(ratatui::widgets::Wrap { trim: true }),
