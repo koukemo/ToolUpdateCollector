@@ -1780,7 +1780,7 @@ DEALINGS IN THE SOFTWARE.
 ------------------------------------------------------------
 MIT License (MIT)
 Used by:
-  - utf8parse 0.2.2 (https://github.com/alacritty/vte)
+  - utf8parse 0.2.3 (https://github.com/alacritty/vte)
 
 Copyright (c) 2016 Joe Wilm
 
@@ -2606,7 +2606,7 @@ SOFTWARE.
 ------------------------------------------------------------
 MIT License (MIT)
 Used by:
-  - tuc 0.2.2 (https://github.com/koukemo/ToolUpdateCollector)
+  - tuc 0.2.3 (https://github.com/koukemo/ToolUpdateCollector)
 
 MIT License
 
@@ -2864,7 +2864,7 @@ DEALINGS IN THE SOFTWARE.
 ------------------------------------------------------------
 MIT License (MIT)
 Used by:
-  - allocator-api2 0.2.21 (https://github.com/zakarumych/allocator-api2)
+  - allocator-api2 0.2.31 (https://github.com/zakarumych/allocator-api2)
 
 Permission is hereby granted, free of charge, to any
 person obtaining a copy of this software and associated
