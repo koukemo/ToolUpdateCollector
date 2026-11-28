@@ -22,6 +22,9 @@ struct Cli {
     /// 対象のプロファイル (省略時は既定)
     #[arg(long, global = true, value_name = "NAME")]
     profile: Option<String>,
+    /// 既定と全プロファイルを対象にする (tuc --all で TUI を開かずに全プロファイルを実行)
+    #[arg(long, global = true, conflicts_with = "profile")]
+    all: bool,
     #[command(subcommand)]
     cmd: Option<Cmd>,
 }
@@ -88,6 +91,9 @@ fn real_main() -> Result<()> {
     let mut cfg = Config::load(&path)?;
 
     let profile = cli.profile.as_deref();
+    if cli.all && matches!(&cli.cmd, Some(Cmd::Add { .. })) {
+        anyhow::bail!("--all は add と一緒に使えません。--profile で登録先を指定してください");
+    }
     if let Some(name) = profile {
         Config::validate_profile_name(name)?;
         if matches!(&cli.cmd, Some(Cmd::Add { .. })) {
@@ -101,22 +107,32 @@ fn real_main() -> Result<()> {
     }
 
     match cli.cmd {
+        None if cli.all => run_and_exit(&cfg, &path, Target::All, false),
         None => match tui::run(&mut cfg, &path, cli.profile)? {
-            tui::Action::Run(profile) => run_and_exit(&cfg, &path, profile.as_deref(), false),
+            tui::Action::Run(profile) => {
+                run_and_exit(&cfg, &path, Target::Profile(profile.as_deref()), false)
+            }
             tui::Action::Quit => Ok(()),
         },
-        Some(Cmd::Run { pause }) => run_and_exit(&cfg, &path, profile, pause),
-        Some(Cmd::List) => {
-            for (i, e) in cfg.commands(profile).iter().enumerate() {
-                let on = if e.enabled { "x" } else { " " };
-                println!(
-                    "{:>2}. [{on}] {:<16} {}  {}",
-                    i + 1,
-                    e.name,
-                    e.command,
-                    e.tags().join(",")
-                );
+        Some(Cmd::Run { pause }) => {
+            let target = if cli.all {
+                Target::All
+            } else {
+                Target::Profile(profile)
+            };
+            run_and_exit(&cfg, &path, target, pause)
+        }
+        Some(Cmd::List) if cli.all => {
+            println!("== 既定 ==");
+            print_list(&cfg.commands);
+            for (name, p) in &cfg.profiles {
+                println!("\n== {name} ==");
+                print_list(&p.commands);
             }
+            Ok(())
+        }
+        Some(Cmd::List) => {
+            print_list(cfg.commands(profile));
             Ok(())
         }
         Some(Cmd::Add {
@@ -153,16 +169,39 @@ fn real_main() -> Result<()> {
     }
 }
 
-fn run_and_exit(cfg: &Config, path: &Path, profile: Option<&str>, pause: bool) -> Result<()> {
-    let commands = cfg.commands(profile);
+fn print_list(entries: &[Entry]) {
+    for (i, e) in entries.iter().enumerate() {
+        let on = if e.enabled { "x" } else { " " };
+        println!(
+            "{:>2}. [{on}] {:<16} {}  {}",
+            i + 1,
+            e.name,
+            e.command,
+            e.tags().join(",")
+        );
+    }
+}
+
+/// 実行対象: 1つのプロファイル (None は既定) か、既定と全プロファイル
+#[derive(Clone, Copy)]
+enum Target<'a> {
+    Profile(Option<&'a str>),
+    All,
+}
+
+fn run_and_exit(cfg: &Config, path: &Path, target: Target, pause: bool) -> Result<()> {
+    let commands = match target {
+        Target::Profile(profile) => cfg.commands(profile).to_vec(),
+        Target::All => cfg.all_commands(),
+    };
     #[cfg(windows)]
-    if runner::needs_elevation(commands) {
-        return run_elevated(path, profile);
+    if runner::needs_elevation(&commands) {
+        return run_elevated(path, target);
     }
     #[cfg(not(windows))]
     let _ = path;
 
-    let results = runner::run_all(commands);
+    let results = runner::run_all(&commands);
     if let Ok(results) = &results {
         runner::print_summary(results);
     }
@@ -185,7 +224,7 @@ fn run_and_exit(cfg: &Config, path: &Path, profile: Option<&str>, pause: bool) -
 
 /// 管理者権限が必要なコマンドがあるとき、UAC で昇格した tuc に実行させる
 #[cfg(windows)]
-fn run_elevated(path: &Path, profile: Option<&str>) -> Result<()> {
+fn run_elevated(path: &Path, target: Target) -> Result<()> {
     println!(
         "\x1b[1;33m* 管理者権限が必要なコマンドがあります。UAC で昇格した別ウィンドウで実行します\x1b[0m"
     );
@@ -195,8 +234,10 @@ fn run_elevated(path: &Path, profile: Option<&str>) -> Result<()> {
         "run".to_string(),
         "--pause".to_string(),
     ];
-    if let Some(name) = profile {
-        args.push(format!("--profile={name}"));
+    match target {
+        Target::Profile(Some(name)) => args.push(format!("--profile={name}")),
+        Target::Profile(None) => {}
+        Target::All => args.push("--all".to_string()),
     }
     match privilege::run_self_elevated(&args)? {
         Some(code) => {
