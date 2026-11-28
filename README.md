@@ -47,6 +47,7 @@ MSI と `tuc.exe` には自己署名の証明書で署名しているが、こ�
 tuc              # TUIを起動
 sudo tuc         # root で起動。sudo のパスワード入力なしで全コマンドを実行
 tuc run          # TUIを開かずに実行
+tuc --all        # 既定と全プロファイルをTUIを開かずに実行 (tuc run --all と同じ)
 tuc list         # 一覧表示
 tuc add "brew update && brew upgrade" -n brew
 tuc update       # 最新版に更新 (--check で確認のみ)
@@ -95,6 +96,8 @@ tuc --profile Git run
 ```
 
 CLI の `add` は指定したプロファイルがなければ作成します。`--profile` を省略すると「既定」が対象になります。
+
+`tuc --all`（または `tuc run --all`）は、既定と全プロファイルの有効なコマンドをまとめて実行します。実行順は既定 → 各プロファイル（名前順）で、「最後に実行」のコマンドは全プロファイルの最後に回します。結果には `[プロファイル名]` が付きます。`tuc list --all` で全プロファイルの一覧を表示できます。
 
 ### Windows の管理者権限
 

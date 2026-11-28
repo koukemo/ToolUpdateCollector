@@ -122,6 +122,18 @@ impl Config {
         }
     }
 
+    /// 既定 → 各プロファイルの順に全コマンドを集める。
+    /// プロファイルのコマンド名には「[プロファイル名] 」を付けて区別する。
+    pub fn all_commands(&self) -> Vec<Entry> {
+        let profiles = self.profiles.iter().flat_map(|(profile, p)| {
+            p.commands.iter().map(move |e| Entry {
+                name: format!("[{profile}] {}", e.name),
+                ..e.clone()
+            })
+        });
+        self.commands.iter().cloned().chain(profiles).collect()
+    }
+
     pub fn commands_mut(&mut self, profile: Option<&str>) -> &mut Vec<Entry> {
         match profile {
             Some(name) => {
